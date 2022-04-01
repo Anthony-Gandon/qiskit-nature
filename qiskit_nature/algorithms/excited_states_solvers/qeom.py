@@ -21,14 +21,16 @@ import numpy as np
 from scipy import linalg
 from qiskit.tools import parallel_map
 from qiskit.tools.events import TextProgressBar
-from qiskit.utils import algorithm_globals
+from qiskit.utils import algorithm_globals, QuantumInstance
 from qiskit.algorithms import AlgorithmResult
+from qiskit.opflow.expectations.expectation_base import ExpectationBase
 from qiskit.opflow import (
     Z2Symmetries,
     commutator,
     double_commutator,
     PauliSumOp,
 )
+from qiskit.algorithms import eval_observables
 
 from qiskit_nature import ListOrDictType
 from qiskit_nature.operators.second_quantization import SecondQuantizedOp
@@ -44,9 +46,9 @@ class QEOM(ExcitedStatesSolver):
     """The calculation of excited states via the qEOM algorithm"""
 
     def __init__(
-        self,
-        ground_state_solver: GroundStateSolver,
-        excitations: Union[str, List[List[int]]] = "sd",
+            self,
+            ground_state_solver: GroundStateSolver,
+            excitations: Union[str, List[List[int]]] = "sd",
     ) -> None:
         """
         Args:
@@ -78,9 +80,11 @@ class QEOM(ExcitedStatesSolver):
         self._excitations = excitations
 
     def solve(
-        self,
-        problem: BaseProblem,
-        aux_operators: Optional[ListOrDictType[SecondQuantizedOp]] = None,
+            self,
+            problem: BaseProblem,
+            aux_operators: Optional[ListOrDictType[SecondQuantizedOp]] = None,
+            expectation: ExpectationBase = None,
+            quantum_instance: QuantumInstance = None,
     ) -> EigenstateResult:
         """Run the excited-states calculation.
 
@@ -90,7 +94,11 @@ class QEOM(ExcitedStatesSolver):
         Args:
             problem: a class encoding a problem to be solved.
             aux_operators: Additional auxiliary operators to evaluate.
-
+            expectation: Might be different from the one used in VQE. If None, the expectation
+            from the groundstate eigensolver is imported. Please note that the include_custom
+            parameter can be used locally in the groundstate eigensolver to create an
+            AerPauliExpectation() but it cannot be retrieved in qeom.solve().
+            quantum_instance: quantum instance that can be used when the solver don't have one.
         Returns:
             An interpreted :class:`~.EigenstateResult`. For more information see also
             :meth:`~.BaseProblem.interpret`.
@@ -102,25 +110,51 @@ class QEOM(ExcitedStatesSolver):
                 "evaluated on the ground state."
             )
 
+        if quantum_instance is None:
+            quantum_instance = getattr(self._gsc.solver, "quantum_instance", None)
+        if expectation is None:
+            expectation = getattr(self._gsc.solver, "expectation", None)
+
         # 1. Run ground state calculation
         groundstate_result = self._gsc.solve(problem, aux_operators)
 
         # 2. Prepare the excitation operators
         second_q_ops = problem.second_q_ops()
+        aux_second_q_ops: ListOrDictType[SecondQuantizedOp]
         if isinstance(second_q_ops, list):
             main_second_q_op = second_q_ops[0]
+            aux_second_q_ops = second_q_ops
         elif isinstance(second_q_ops, dict):
-            main_second_q_op = second_q_ops.pop(problem.main_property_name)
+            name = problem.main_property_name
+            main_second_q_op = second_q_ops.get(name, None)
+            if main_second_q_op is None:
+                raise ValueError(
+                    f"The main `SecondQuantizedOp` associated with the {name} property cannot be "
+                    "`None`."
+                )
+            aux_second_q_ops = second_q_ops
 
         self._untapered_qubit_op_main = self._gsc.qubit_converter.convert_only(
-            main_second_q_op, problem.num_particles
+            main_second_q_op,
+            num_particles=problem.num_particles,
         )
-        matrix_operators_dict, size = self._prepare_matrix_operators(problem)
+        aux_ops = self._gsc.qubit_converter.convert_match(aux_second_q_ops)
+
+
+        matrix_operators_dict, size, hopping_operators = self._prepare_matrix_operators(problem)
 
         # 3. Evaluate eom operators
-        measurement_results = self._gsc.evaluate_operators(
-            groundstate_result.eigenstates[0], matrix_operators_dict
+        if hasattr(self._gsc.solver, "ansatz") and self._gsc.solver is not None:
+            circuit_state = self._gsc.solver.ansatz.assign_parameters(
+                groundstate_result.raw_result.optimal_point
+            )
+        else:
+            circuit_state = groundstate_result.eigenstates[0]
+
+        measurement_results = eval_observables(
+            quantum_instance, circuit_state, matrix_operators_dict, expectation
         )
+
         measurement_results = cast(Dict[str, List[float]], measurement_results)
 
         # 4. Post-process ground_state_result to construct eom matrices
@@ -137,6 +171,18 @@ class QEOM(ExcitedStatesSolver):
 
         # 5. solve pseudo-eigenvalue problem
         energy_gaps, expansion_coefs = self._compute_excitation_energies(m_mat, v_mat, q_mat, w_mat)
+
+        # 6. compute the excited eigenstates
+        excitation_operators = self._compute_operators_On_Aux_On_dag(
+            hopping_operators, expansion_coefs, size, aux_ops
+        )
+
+        aux_operator_eigenvalues_excited_states = {}
+
+        for index, dict_of_aux in excitation_operators.items():
+            aux_operator_eigenvalues_excited_states[index] = eval_observables(
+                quantum_instance, circuit_state, dict_of_aux, expectation
+            )
 
         qeom_result = QEOMResult()
         qeom_result.ground_state_raw_result = groundstate_result.raw_result
@@ -155,7 +201,6 @@ class QEOM(ExcitedStatesSolver):
         eigenstate_result.eigenstates = groundstate_result.eigenstates
         eigenstate_result.aux_operator_eigenvalues = groundstate_result.aux_operator_eigenvalues
         eigenstate_result.raw_result = qeom_result
-
         eigenstate_result.eigenenergies = np.append(
             groundstate_result.eigenenergies,
             np.asarray([groundstate_result.eigenenergies[0] + gap for gap in energy_gaps]),
@@ -163,7 +208,7 @@ class QEOM(ExcitedStatesSolver):
 
         result = problem.interpret(eigenstate_result)
 
-        return result
+        return result, hopping_operators, aux_operator_eigenvalues_excited_states
 
     def _prepare_matrix_operators(self, problem) -> Tuple[dict, int]:
         """Construct the excitation operators for each matrix element.
@@ -181,10 +226,10 @@ class QEOM(ExcitedStatesSolver):
             hopping_operators, type_of_commutativities, size
         )
 
-        return eom_matrix_operators, size
+        return eom_matrix_operators, size, hopping_operators
 
     def _build_all_commutators(
-        self, hopping_operators: dict, type_of_commutativities: dict, size: int
+            self, hopping_operators: dict, type_of_commutativities: dict, size: int
     ) -> dict:
         """Building all commutators for Q, W, M, V matrices.
 
@@ -270,7 +315,7 @@ class QEOM(ExcitedStatesSolver):
 
     @staticmethod
     def _build_commutator_routine(
-        params: List, operator: PauliSumOp, z2_symmetries: Z2Symmetries
+            params: List, operator: PauliSumOp, z2_symmetries: Z2Symmetries
     ) -> Tuple[int, int, PauliSumOp, PauliSumOp, PauliSumOp, PauliSumOp]:
         """Numerically computes the commutator / double commutator between operators.
 
@@ -332,7 +377,7 @@ class QEOM(ExcitedStatesSolver):
         return m_u, n_u, q_mat_op, w_mat_op, m_mat_op, v_mat_op
 
     def _build_eom_matrices(
-        self, gs_results: Dict[str, List[float]], size: int
+            self, gs_results: Dict[str, List[float]], size: int
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float, float, float]:
         """Constructs the M, V, Q and W matrices from the results on the ground state
 
@@ -410,10 +455,10 @@ class QEOM(ExcitedStatesSolver):
         m_mat = np.real(m_mat)
         v_mat = np.real(v_mat)
 
-        q_mat_std = q_mat_std / float(size**2)
-        w_mat_std = w_mat_std / float(size**2)
-        m_mat_std = m_mat_std / float(size**2)
-        v_mat_std = v_mat_std / float(size**2)
+        q_mat_std = q_mat_std / float(size ** 2)
+        w_mat_std = w_mat_std / float(size ** 2)
+        m_mat_std = m_mat_std / float(size ** 2)
+        v_mat_std = v_mat_std / float(size ** 2)
 
         logger.debug("\nQ:=========================\n%s", q_mat)
         logger.debug("\nW:=========================\n%s", w_mat)
@@ -424,7 +469,7 @@ class QEOM(ExcitedStatesSolver):
 
     @staticmethod
     def _compute_excitation_energies(
-        m_mat: np.ndarray, v_mat: np.ndarray, q_mat: np.ndarray, w_mat: np.ndarray
+            m_mat: np.ndarray, v_mat: np.ndarray, q_mat: np.ndarray, w_mat: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Diagonalizing M, V, Q, W matrices for excitation energies.
 
@@ -453,13 +498,51 @@ class QEOM(ExcitedStatesSolver):
         # Since we may now have
         # small values (positive or negative) take the absolute and then threshold zero.
         logger.debug("... %s", res[0])
-        w = np.sort(np.real(res[0]))
+        order = np.argsort(np.real(res[0]))
+        w = np.real(res[0])[order]
         logger.debug("Sorted real parts %s", w)
-        w = np.abs(w[len(w) // 2 :])
+        w = np.abs(w[len(w) // 2:])
         w[w < 1e-06] = 0
         excitation_energies_gap = w
+        expansion_coefs = (res[1][:, order[len(order) // 2:]])
+        # expansion_coefs = (res[1][:, order])
 
-        return excitation_energies_gap, res[1]
+        return excitation_energies_gap, expansion_coefs
+
+    @staticmethod
+    def _compute_operators_On_Aux_On_dag(hopping_operators: Dict[str, PauliSumOp],
+                                         expansion_coefs: np.ndarray,
+                                         size: int,
+                                         aux_operators: ListOrDictType[SecondQuantizedOp] = None,
+                                         ) -> Dict[str, Dict[str, PauliSumOp]]:
+        # Creates all the On and On^\dag operators
+        print(hopping_operators)
+        general_excitation_operators = {}
+        for n in range(0, size):
+            mu_0 = 0
+            excitation_op = hopping_operators.get(f'E_{mu_0}')
+            desexcitation_op = hopping_operators.get(f'Edag_{mu_0}')
+
+            general_excitation_operators[f'O_{n}'] = complex(expansion_coefs[mu_0, n]) * excitation_op \
+                                                    - complex(expansion_coefs[mu_0, n]) * desexcitation_op
+            for mu in range(mu_0+1, size):
+                print(mu, n)
+                excitation_op = hopping_operators.get(f'E_{mu}')
+                desexcitation_op = hopping_operators.get(f'Edag_{mu}')
+
+                general_excitation_operators[f'O_{n}'] += complex(expansion_coefs[mu, n]) * excitation_op \
+                                                          - complex(expansion_coefs[mu, n]) * desexcitation_op
+
+            general_excitation_operators[f'O_{n}'] = general_excitation_operators[f'O_{n}'].reduce()
+
+        # Creates all the On @ Aux @ On^\dag operators
+        general_on_aux_on_operators = {}
+        for on_str, on_dag in general_excitation_operators.items():
+            dict_aux_op_eigenvalues_on = {}
+            for aux_str, aux_op in aux_operators.items():
+                dict_aux_op_eigenvalues_on[aux_str] = on_dag.adjoint() @ aux_op @ on_dag
+            general_on_aux_on_operators[on_str] = dict_aux_op_eigenvalues_on
+        return general_on_aux_on_operators
 
 
 class QEOMResult(AlgorithmResult):
