@@ -17,8 +17,8 @@ import io
 import unittest
 import warnings
 
-from qiskit.opflow import MatrixExpectation
 from test import QiskitNatureTestCase
+from qiskit.opflow import MatrixExpectation
 
 import qiskit
 from qiskit.utils import algorithm_globals, QuantumInstance, optionals

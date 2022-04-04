@@ -172,7 +172,7 @@ class GroundStateEigensolver(GroundStateSolver):
                    more details.
             operators: either a single, list or dictionary of ``PauliSumOp``s or any kind
                        of operator implementing the ``OperatorBase``.
-            expectation: may be different from the groundstate_eigensolver
+            expectation: may be different from the ground_state_eigensolver.
 
         Returns:
             The expectation value of the given operator(s). The return type will be identical to the
