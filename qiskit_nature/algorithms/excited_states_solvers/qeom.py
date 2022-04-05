@@ -201,6 +201,16 @@ class QEOM(ExcitedStatesSolver):
         for index_op, op in excitation_operators.items():
             excited_eigenstates.append((op @ StateFn(circuit_state)).eval())
 
+        test_eigenenergies = []
+        for eigenstate in excited_eigenstates:
+            test_eigenenergies.append(
+                eval_observables(
+                    quantum_instance, eigenstate, self._untapered_qubit_op_main, expectation
+                )
+            )
+
+        print(test_eigenenergies)
+
         raw_es_result = EigensolverResult()
         raw_es_result.aux_operator_eigenvalues = aux_operator_eigenvalues_excited_states
         raw_es_result.eigenvalues = np.append(groundstate_result.eigenenergies,
