@@ -29,9 +29,13 @@ from qiskit.opflow import (
     commutator,
     double_commutator,
     PauliSumOp,
-    CircuitStateFn
+    CircuitStateFn,
+    StateFn
 )
+from qiskit.opflow.list_ops.list_op import ListOp
+
 from qiskit.algorithms import eval_observables
+from qiskit.algorithms import EigensolverResult
 
 from qiskit_nature import ListOrDictType
 from qiskit_nature.operators.second_quantization import SecondQuantizedOp
@@ -177,31 +181,33 @@ class QEOM(ExcitedStatesSolver):
             hopping_operators, expansion_coefs, size, aux_ops
         )
 
-        aux_operator_eigenvalues_excited_states = {}
+        aux_operator_eigenvalues_excited_states = groundstate_result.aux_operator_eigenvalues
 
-        for index, dict_of_aux in aux_excitation_operators.items():
+        for index, dict_of_aux in enumerate(aux_excitation_operators.values()):
             not_normalized_eigenvalues = eval_observables(
                 quantum_instance, circuit_state, dict_of_aux, expectation
             )
             normalisation_value = not_normalized_eigenvalues.pop('identity', (1., 0.))
-            print(index, normalisation_value)
-            aux_operator_eigenvalues_excited_states[index] = {}
+            aux_operator_eigenvalues_excited_states.append({})
             for op_name, op_eigenval in not_normalized_eigenvalues.items():
-                aux_operator_eigenvalues_excited_states[index][op_name] = (op_eigenval[0] / normalisation_value[0],
+                aux_operator_eigenvalues_excited_states[index+1][op_name] = (op_eigenval[0] / normalisation_value[0],
                                                                            op_eigenval[1]
                                                                            )
-        for ix, value in hopping_operators.items():
-            print(ix, value.to_matrix_op())
 
+        excited_energies = [obj['ElectronicEnergy'] for obj in aux_operator_eigenvalues_excited_states[1:]]
+        print(excited_energies)
 
-        # test = {}
-        # for i in range(size):
-        #     for j in range(size):
-        #         hop_i = hopping_operators.get(f'E_{i}')
-        #         hop_j = hopping_operators.get(f'E_{j}')
-        #         test[f"E_{i}_E_{j}"] = eval_observables(
-        #             quantum_instance, circuit_state, [(hop_i @ hop_j).reduce()], expectation
-        #         )
+        excited_eigenstates = [StateFn(circuit_state).eval()]
+        for index_op, op in excitation_operators.items():
+            excited_eigenstates.append((op @ StateFn(circuit_state)).eval())
+
+        raw_es_result = EigensolverResult()
+        raw_es_result.aux_operator_eigenvalues = aux_operator_eigenvalues_excited_states
+        raw_es_result.eigenvalues = np.append(groundstate_result.eigenenergies,
+                                              np.asarray([gap[0] for gap in
+                                                          excited_energies]),
+                                              )
+        raw_es_result.eigenstates = ListOp([StateFn(vec) for vec in excited_eigenstates])
 
         qeom_result = QEOMResult()
         qeom_result.ground_state_raw_result = groundstate_result.raw_result
@@ -217,17 +223,13 @@ class QEOM(ExcitedStatesSolver):
         qeom_result.w_matrix_std = w_mat_std
 
         eigenstate_result = EigenstateResult()
-        eigenstate_result.eigenstates = groundstate_result.eigenstates
-        eigenstate_result.aux_operator_eigenvalues = groundstate_result.aux_operator_eigenvalues
-        eigenstate_result.raw_result = qeom_result
-        eigenstate_result.eigenenergies = np.append(
-            groundstate_result.eigenenergies,
-            np.asarray([groundstate_result.eigenenergies[0] + gap for gap in energy_gaps]),
-        )
-
+        eigenstate_result.raw_result = raw_es_result
+        eigenstate_result.eigenenergies = raw_es_result.eigenvalues
+        eigenstate_result.eigenstates = raw_es_result.eigenstates
+        eigenstate_result.aux_operator_eigenvalues = raw_es_result.aux_operator_eigenvalues
         result = problem.interpret(eigenstate_result)
 
-        return result, hopping_operators, aux_operator_eigenvalues_excited_states
+        return result
 
     def _prepare_matrix_operators(self, problem) -> Tuple[dict, int]:
         """Construct the excitation operators for each matrix element.
@@ -519,14 +521,12 @@ class QEOM(ExcitedStatesSolver):
         logger.debug("... %s", res[0])
         order = np.argsort(np.real(res[0]))
         w = np.real(res[0])[order]
-        print(w)
         logger.debug("Sorted real parts %s", w)
         w = np.abs(w[len(w) // 2:])
         w[w < 1e-06] = 0
         excitation_energies_gap = w
-        #expansion_coefs = (res[1][:, order[len(order) // 2:]])
+        # expansion_coefs = (res[1][:, order[len(order) // 2:]])
         expansion_coefs = (res[1][:, order])
-        print(expansion_coefs)
         return excitation_energies_gap, expansion_coefs
 
     @staticmethod
@@ -537,14 +537,15 @@ class QEOM(ExcitedStatesSolver):
                                          ) -> Dict[str, Dict[str, PauliSumOp]]:
         # Creates all the On and On^\dag operators
         general_excitation_operators = {}  # O(n)^\dag for n = 1,2,3,...,size
-        for n in range(0, 2*size):
+        for n in range(0, 2 * size):
             general_excitation_operators[f'Odag_{n + 1}'] = 0
             for mu in range(0, size):
                 de_excitation_op = hopping_operators.get(f'E_{mu}')
                 excitation_op = hopping_operators.get(f'Edag_{mu}')
 
                 general_excitation_operators[f'Odag_{n + 1}'] += complex(expansion_coefs[mu, n]) * de_excitation_op \
-                                                                 - complex(expansion_coefs[mu + size, n]) * excitation_op
+                                                                 - complex(
+                    expansion_coefs[mu + size, n]) * excitation_op
 
             general_excitation_operators[f'Odag_{n + 1}'] = general_excitation_operators[f'Odag_{n + 1}'].reduce()
 
