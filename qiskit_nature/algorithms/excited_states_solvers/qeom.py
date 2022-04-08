@@ -559,7 +559,7 @@ class QEOM(ExcitedStatesSolver):
         w[w < 1e-06] = 0
         excitation_energies_gap = w
         # expansion_coefs = res[1][:, order[len(order) // 2 :]]
-        expansion_coefs = (res[1][:, order])
+        expansion_coefs = res[1][:, order]
         return excitation_energies_gap, expansion_coefs
 
     @staticmethod
@@ -573,7 +573,7 @@ class QEOM(ExcitedStatesSolver):
     ) -> Dict[str, Dict[str, PauliSumOp]]:
         # Creates all the On and On^\dag operators
         general_excitation_operators = {}  # O(n)^\dag for n = 1,2,3,...,size
-        for n in range(0, 2*size):
+        for n in range(0, 2 * size):
             general_excitation_operators[f"Odag_{n + 1}"] = 0
             for mu in range(0, size):
                 de_excitation_op = hopping_operators.get(f"E_{mu}")
