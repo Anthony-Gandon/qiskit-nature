@@ -127,7 +127,7 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
         gsc = GroundStateEigensolver(converter, solver)
         esc = QEOM(gsc, "sd")
         results = esc.solve(self.electronic_structure_problem)
-
+        print(results.computed_energies)
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_energies[idx], energy, places=4)
 

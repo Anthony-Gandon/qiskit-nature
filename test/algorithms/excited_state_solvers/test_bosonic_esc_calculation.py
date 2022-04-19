@@ -105,7 +105,7 @@ class TestBosonicESCCalculation(QiskitNatureTestCase):
         solver = NumPyEigensolverFactory(use_default_filter_criterion=True)
         esc = ExcitedStatesEigensolver(self.qubit_converter, solver)
         results = esc.solve(self.vibrational_problem)
-
+        print(results.computed_vibrational_energies)
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_vibrational_energies[idx], energy, places=4)
 
@@ -120,6 +120,7 @@ class TestBosonicESCCalculation(QiskitNatureTestCase):
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
         esc = QEOM(gsc, "sd")
         results = esc.solve(self.vibrational_problem)
+        print(results.computed_vibrational_energies)
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_vibrational_energies[idx], energy, places=1)
 
