@@ -35,6 +35,8 @@ from qiskit_nature.algorithms import (
     ExcitedStatesEigensolver,
     QEOM,
 )
+from qiskit.opflow import MatrixExpectation, PauliExpectation, AerPauliExpectation
+
 import qiskit_nature.optionals as _optionals
 
 
@@ -69,13 +71,19 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
             seed_transpiler=90,
             seed_simulator=12,
         )
+        self.expectation = MatrixExpectation()
 
     def test_numpy_mes(self):
         """Test NumPyMinimumEigenSolver with QEOM"""
         solver = NumPyMinimumEigensolver()
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
         esc = QEOM(gsc, "sd")
-        results = esc.solve(self.electronic_structure_problem)
+        results = esc.solve(
+            self.electronic_structure_problem,
+            construct_true_eigenstates=True,
+            quantum_instance=self.quantum_instance,
+            expectation=self.expectation,
+        )
 
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_energies[idx], energy, places=4)
@@ -126,7 +134,12 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
         solver = VQEUCCFactory(self.quantum_instance)
         gsc = GroundStateEigensolver(converter, solver)
         esc = QEOM(gsc, "sd")
-        results = esc.solve(self.electronic_structure_problem)
+        results = esc.solve(
+            self.electronic_structure_problem,
+            construct_true_eigenstates=True,
+            quantum_instance=self.quantum_instance,
+            expectation=self.expectation,
+        )
         print(results.computed_energies)
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_energies[idx], energy, places=4)

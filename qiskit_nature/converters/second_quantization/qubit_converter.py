@@ -209,6 +209,41 @@ class QubitConverter:
 
         return reduced_op
 
+    def convert_only_save(
+        self,
+        second_q_op: SecondQuantizedOp,
+        num_particles: Optional[Tuple[int, int]] = None,
+        sector_locator: Optional[
+            Callable[[Z2Symmetries, "QubitConverter"], Optional[List[int]]]
+        ] = None,
+    ) -> PauliSumOp:
+        """
+        Map the given second quantized operator to a qubit operators using the mapper
+        and possibly two qubit reduction. No tapering is done but the conversion state is saved,
+        as is done in :meth:`convert` where a later :meth:`convert_match` will convert
+        further operators in an identical manner.
+
+        Args:
+            second_q_op: A second quantized operator.
+            num_particles: Needed for two qubit reduction to determine correct sector. If
+                not supplied, even if two_qubit_reduction is possible, it will not be done.
+            sector_locator: An optional callback, that given the detected Z2Symmetries, and also
+                the instance of the converter, can determine the correct sector of the tapered
+                operators so the correct one can be returned, which contains the problem solution,
+                out of the set that are the result of tapering.
+
+        Returns:
+            PauliSumOp qubit operator
+        """
+        qubit_op = self._map(second_q_op)
+        reduced_op = self._two_qubit_reduce(qubit_op, num_particles)
+        tapered_op, z2symmetries = self._find_taper_op(reduced_op, sector_locator)
+
+        self._num_particles = num_particles
+        self._z2symmetries = z2symmetries
+
+        return reduced_op
+
     def force_match(
         self,
         num_particles: Optional[Tuple[int, int]] = None,
