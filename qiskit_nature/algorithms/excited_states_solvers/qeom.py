@@ -641,14 +641,14 @@ class QEOM(ExcitedStatesSolver):
                     - general_excitation_operators_eval[f"Odag_{operator_indices[n]}"] ** 2
                 )
             ).reduce()
-            # print(np.real(product_metric))
-            # print(
-            #     np.sqrt(
-            #         product_metric[n, n]
-            #         - general_excitation_operators_eval[f"Odag_{operator_indices[n]}"] ** 2
-            #     )
-            # )
-            # print("alpha :", general_excitation_operators_eval[f"Odag_{operator_indices[n]}"])
+            print(np.real(product_metric))
+            print(
+                np.sqrt(
+                    product_metric[n, n]
+                    - general_excitation_operators_eval[f"Odag_{operator_indices[n]}"] ** 2
+                )
+            )
+            print("alpha :", general_excitation_operators_eval[f"Odag_{operator_indices[n]}"])
         return general_excitation_operators
 
     def _compute_metric(self, hopping_operator_products_eval, size):
