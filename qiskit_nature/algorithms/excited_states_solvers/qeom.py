@@ -500,6 +500,8 @@ class QEOM(ExcitedStatesSolver):
         a_mat = np.matrixlib.bmat([[m_mat, q_mat], [q_mat.T.conj(), m_mat.T.conj()]])
         b_mat = np.matrixlib.bmat([[v_mat, w_mat], [-w_mat.T.conj(), -v_mat.T.conj()]])
 
+        print(np.real(a_mat))
+        print(np.real(b_mat))
         res = linalg.eig(a_mat, b_mat)
 
         # convert nan value into 0
@@ -524,6 +526,7 @@ class QEOM(ExcitedStatesSolver):
         # expansion_coefs = res[1][:, order]
 
         product_metric = expansion_coefs.T.conjugate() @ metric @ expansion_coefs
+        print(expansion_coefs)
 
         return excitation_energies_gap, expansion_coefs, product_metric
 
@@ -679,6 +682,7 @@ class QEOM(ExcitedStatesSolver):
         # print()
 
         metric = np.matrixlib.bmat([[A_mat, B_mat], [C_mat, D_mat]])
+        print(np.real(metric))
         bimetric = np.matrixlib.bmat([[D_mat.T, B_mat.T], [C_mat.T, A_mat.T]])
 
         return metric
