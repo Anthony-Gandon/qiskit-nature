@@ -278,6 +278,8 @@ class QEOM(ExcitedStatesSolver):
         except AttributeError:
             z2_symmetries = Z2Symmetries([], [], [])
 
+        print(z2_symmetries)
+
         if not z2_symmetries.is_empty():
             combinations = itertools.product([1, -1], repeat=len(z2_symmetries.symmetries))
             for targeted_tapering_values in combinations:
@@ -289,11 +291,15 @@ class QEOM(ExcitedStatesSolver):
 
                 available_hopping_ops = {}
                 targeted_sector = np.asarray(targeted_tapering_values) == 1
+                print("targeted_sector", targeted_sector)
                 for key, value in type_of_commutativities.items():
                     value = np.asarray(value)
+                    print(value)
                     if np.all(value == targeted_sector):
                         available_hopping_ops[key] = hopping_operators[key]
                 # untapered_qubit_op is a PauliSumOp and should not be exposed.
+                print("available", available_hopping_ops)
+
                 _build_one_sector(
                     available_hopping_ops, self._untapered_qubit_op_main, z2_symmetries
                 )
@@ -357,7 +363,9 @@ class QEOM(ExcitedStatesSolver):
 
             if not z2_symmetries.is_empty():
                 if q_mat_op is not None and len(q_mat_op) > 0:
+                    print("before", q_mat_op)
                     q_mat_op = z2_symmetries.taper(q_mat_op)
+                    print("after", q_mat_op)
                 if w_mat_op is not None and len(w_mat_op) > 0:
                     w_mat_op = z2_symmetries.taper(w_mat_op)
                 if m_mat_op is not None and len(m_mat_op) > 0:
