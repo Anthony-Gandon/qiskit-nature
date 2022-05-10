@@ -194,8 +194,7 @@ class QEOM(ExcitedStatesSolver):
             )
 
             (
-                recalculated_excited_energies,
-                aux_operator_eigenvalues_excited_states,
+                recalculated_excited_energies, aux_operator_eigenvalues_excited_states,
             ) = self._eval_all_aux_ops(
                 excitation_operators, aux_ops, bound_ansatz, quantum_instance, expectation, problem
             )
