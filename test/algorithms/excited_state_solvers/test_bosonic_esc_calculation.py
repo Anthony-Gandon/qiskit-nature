@@ -17,11 +17,12 @@ import io
 import unittest
 import warnings
 
+from qiskit.opflow import MatrixExpectation
 from test import QiskitNatureTestCase
 from qiskit.opflow import MatrixExpectation
 
 import qiskit
-from qiskit.utils import algorithm_globals, QuantumInstance
+from qiskit.utils import algorithm_globals, QuantumInstance, optionals
 from qiskit.algorithms.optimizers import COBYLA
 from qiskit_nature.drivers import WatsonHamiltonian
 from qiskit_nature.drivers.second_quantization import VibrationalStructureDriver
@@ -108,21 +109,24 @@ class TestBosonicESCCalculation(QiskitNatureTestCase):
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_vibrational_energies[idx], energy, places=4)
 
+    @unittest.skipUnless(optionals.HAS_AER, "qiskit-aer is required to run this test")
     def test_vqe_uvccsd_factory(self):
         """Test with VQE plus UVCCSD"""
         optimizer = COBYLA(maxiter=5000)
-        quantum_instance = QuantumInstance(
-            backend=qiskit.BasicAer.get_backend("statevector_simulator"),
-            seed_simulator=algorithm_globals.random_seed,
-            seed_transpiler=algorithm_globals.random_seed,
+        solver = VQEUVCCFactory(
+            QuantumInstance(qiskit.Aer.get_backend("aer_simulator_statevector")),
+            optimizer=optimizer,
+            include_custom=True,
         )
-        solver = VQEUVCCFactory(quantum_instance, optimizer=optimizer)
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
         esc = QEOM(gsc, "sd")
-        results = esc.solve(self.vibrational_problem)
+        results = esc.solve(self.vibrational_problem, expectation=MatrixExpectation())
+        print(list(self.reference_energies))
+        print(list(results.computed_vibrational_energies))
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_vibrational_energies[idx], energy, places=1)
 
+    @unittest.skipUnless(optionals.HAS_AER, "qiskit-aer is required to run this test")
     def test_vqe_uvccsd_with_callback(self):
         """Test VQE UVCCSD with callback."""
 
@@ -130,12 +134,11 @@ class TestBosonicESCCalculation(QiskitNatureTestCase):
             print(f"iterations {nfev}: energy: {energy}")
 
         optimizer = COBYLA(maxiter=5000)
-        quantum_instance = QuantumInstance(
-            backend=qiskit.BasicAer.get_backend("statevector_simulator"),
-            seed_simulator=algorithm_globals.random_seed,
-            seed_transpiler=algorithm_globals.random_seed,
+        solver = VQEUVCCFactory(
+            QuantumInstance(qiskit.Aer.get_backend("aer_simulator_statevector")),
+            optimizer=optimizer,
+            callback=cb_callback,
         )
-        solver = VQEUVCCFactory(quantum_instance, optimizer=optimizer, callback=cb_callback)
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
         esc = QEOM(gsc, "sd")
         with contextlib.redirect_stdout(io.StringIO()) as out:
