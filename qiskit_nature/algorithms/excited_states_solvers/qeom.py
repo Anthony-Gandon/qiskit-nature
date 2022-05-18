@@ -84,6 +84,21 @@ class QEOM(ExcitedStatesSolver):
         self._excitations = excitations
 
     def set_eval_aux_ops_args(self, eval_aux_ops_args):
+        """
+        Set up various parameters to define if and how the auxiliary operators should be evaluated on excited states.
+        Args:
+            eval_aux_ops_args: Dictionnary of parameters
+                construct_true_eigenstates: If true, the excited states are unmixed from the groundstate
+                    (NB: Requires extra measurements)
+                evaluate_aux_qeom: If true, the auxiliary operators are evaluated on the aux operators
+                    (NB: Requires extra measurements)
+                check_energy: If true, the Hamiltonian is added to the auxiliary operators for double checking
+                quantum_instance: Must be provided if evaluate_aux_qeom is True
+                expectation: Must be provided if evaluate_aux_qeom is True
+
+        Returns:
+
+        """
         self._construct_true_eigenstates = eval_aux_ops_args["construct_true_eigenstates"]
         self._evaluate_aux_qeom = eval_aux_ops_args["evaluate_aux_qeom"]
         self._check_energy = eval_aux_ops_args["check_energy"]
@@ -103,14 +118,6 @@ class QEOM(ExcitedStatesSolver):
         Args:
             problem: a class encoding a problem to be solved.
             aux_operators: Additional auxiliary operators to evaluate.
-            eval_aux_ops_args:
-                construct_true_eigenstates: True to fix the excited states
-                    (NB: Requires extra measurements)
-                evaluate_aux_qeom: True to evaluate the auxiliary operators on the excited states
-                    (NB: Requires extra measurements)
-                check_energy: True to add the Hamiltonian in the Auxiliary opertors for verification
-                quantum_instance: If not provided by the GroundEigenSolver
-                expectation: If not provided by the GroundEigenSolver
 
         Returns:
             An interpreted :class:`~.EigenstateResult`. For more information see also
@@ -120,6 +127,7 @@ class QEOM(ExcitedStatesSolver):
         # TODO FIX RESULTS FOR Z2SYMMETRIES
 
         # 1. Prepare the auxiliary operators and the main operator
+        # Sets the self_untapered_qubit_op_main
         aux_ops = self._prepare_second_q_ops(problem, aux_operators)
 
         # 2. Prepare the basis of matrix operators
