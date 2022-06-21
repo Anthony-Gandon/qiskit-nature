@@ -19,10 +19,11 @@ import warnings
 
 from test import QiskitNatureTestCase
 
+import numpy as np
+
 import qiskit
 from qiskit.utils import algorithm_globals, QuantumInstance
 from qiskit.algorithms.optimizers import COBYLA
-from qiskit import BasicAer
 
 from qiskit_nature.drivers import WatsonHamiltonian
 from qiskit_nature.drivers.second_quantization import VibrationalStructureDriver
@@ -43,8 +44,6 @@ from qiskit_nature.algorithms import (
 from qiskit_nature.properties.second_quantization.vibrational import (
     VibrationalStructureDriverResult,
 )
-
-from qiskit.opflow import MatrixExpectation, PauliExpectation, AerPauliExpectation
 
 
 class _DummyBosonicDriver(VibrationalStructureDriver):
@@ -92,24 +91,13 @@ class TestBosonicESCCalculation(QiskitNatureTestCase):
         self.vibrational_problem = VibrationalStructureProblem(
             self.driver, self.basis_size, self.truncation_order
         )
-        self.quantum_instance = QuantumInstance(
-            BasicAer.get_backend("statevector_simulator"),
-            seed_transpiler=90,
-            seed_simulator=12,
-        )
-        self.expectation = MatrixExpectation()
 
     def test_numpy_mes(self):
         """Test with NumPyMinimumEigensolver"""
         solver = NumPyMinimumEigensolverFactory(use_default_filter_criterion=True)
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
         esc = QEOM(gsc, "sd")
-        results = esc.solve(
-            self.vibrational_problem,
-            construct_true_eigenstates=True,
-            quantum_instance=self.quantum_instance,
-            expectation=self.expectation,
-        )
+        results = esc.solve(self.vibrational_problem)
 
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_vibrational_energies[idx], energy, places=4)
@@ -120,7 +108,6 @@ class TestBosonicESCCalculation(QiskitNatureTestCase):
         esc = ExcitedStatesEigensolver(self.qubit_converter, solver)
         results = esc.solve(self.vibrational_problem)
 
-        print(results.computed_vibrational_energies)
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_vibrational_energies[idx], energy, places=4)
 
@@ -132,15 +119,31 @@ class TestBosonicESCCalculation(QiskitNatureTestCase):
             seed_simulator=algorithm_globals.random_seed,
             seed_transpiler=algorithm_globals.random_seed,
         )
-        solver = VQEUVCCFactory(quantum_instance, optimizer=optimizer)
+        solver = VQEUVCCFactory(quantum_instance=quantum_instance, optimizer=optimizer)
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
         esc = QEOM(gsc, "sd")
-        results = esc.solve(
-            self.vibrational_problem, construct_true_eigenstates=True, expectation=self.expectation
-        )
-        print(results.computed_vibrational_energies)
+        results = esc.solve(self.vibrational_problem)
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_vibrational_energies[idx], energy, places=1)
+
+    def test_vqe_uvcc_factory_with_user_initial_point(self):
+        """Test VQEUVCCFactory when using it with a user defined initial point."""
+        initial_point = np.asarray([-7.35250290e-05, -9.73079292e-02, -5.43346282e-05])
+        optimizer = COBYLA(maxiter=1)
+        quantum_instance = QuantumInstance(
+            backend=qiskit.BasicAer.get_backend("statevector_simulator"),
+            seed_simulator=algorithm_globals.random_seed,
+            seed_transpiler=algorithm_globals.random_seed,
+        )
+        solver = VQEUVCCFactory(
+            quantum_instance=quantum_instance, optimizer=optimizer, initial_point=initial_point
+        )
+        gsc = GroundStateEigensolver(self.qubit_converter, solver)
+        esc = QEOM(gsc, "sd")
+        results = esc.solve(self.vibrational_problem)
+        np.testing.assert_array_almost_equal(
+            results.raw_result.ground_state_raw_result.optimal_point, initial_point
+        )
 
     def test_vqe_uvccsd_with_callback(self):
         """Test VQE UVCCSD with callback."""
@@ -149,21 +152,19 @@ class TestBosonicESCCalculation(QiskitNatureTestCase):
             print(f"iterations {nfev}: energy: {energy}")
 
         optimizer = COBYLA(maxiter=5000)
+
         quantum_instance = QuantumInstance(
             backend=qiskit.BasicAer.get_backend("statevector_simulator"),
             seed_simulator=algorithm_globals.random_seed,
             seed_transpiler=algorithm_globals.random_seed,
         )
-        solver = VQEUVCCFactory(quantum_instance, optimizer=optimizer, callback=cb_callback)
+        solver = VQEUVCCFactory(
+            quantum_instance=quantum_instance, optimizer=optimizer, callback=cb_callback
+        )
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
         esc = QEOM(gsc, "sd")
         with contextlib.redirect_stdout(io.StringIO()) as out:
-            results = esc.solve(
-                self.vibrational_problem,
-                construct_true_eigenstates=True,
-                quantum_instance=self.quantum_instance,
-                expectation=self.expectation,
-            )
+            results = esc.solve(self.vibrational_problem)
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_vibrational_energies[idx], energy, places=1)
         for idx, line in enumerate(out.getvalue().split("\n")):
