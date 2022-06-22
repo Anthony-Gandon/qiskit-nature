@@ -78,12 +78,7 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
         solver = NumPyMinimumEigensolver()
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
         esc = QEOM(gsc, "sd")
-        results = esc.solve(
-            self.electronic_structure_problem,
-            construct_true_eigenstates=True,
-            quantum_instance=self.quantum_instance,
-            expectation=self.expectation,
-        )
+        results = esc.solve(self.electronic_structure_problem)
 
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_energies[idx], energy, places=4)
@@ -134,17 +129,33 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
         solver = VQEUCCFactory(quantum_instance=self.quantum_instance)
         gsc = GroundStateEigensolver(converter, solver)
         esc = QEOM(gsc, "sd")
-        results = esc.solve(
-            self.electronic_structure_problem,
-            construct_true_eigenstates=True,
-            quantum_instance=self.quantum_instance,
-            expectation=self.expectation,
-        )
+        results = esc.solve(self.electronic_structure_problem)
         print(results.computed_energies)
+
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_energies[idx], energy, places=4)
 
     def test_numpy_factory(self):
+        """Test NumPyEigenSolverFactory with ExcitedStatesEigensolver"""
+
+        # pylint: disable=unused-argument
+        def filter_criterion(eigenstate, eigenvalue, aux_values):
+            return np.isclose(aux_values["ParticleNumber"][0], 2.0)
+
+        solver = NumPyEigensolverFactory(filter_criterion=filter_criterion)
+        esc = ExcitedStatesEigensolver(self.qubit_converter, solver)
+        results = esc.solve(self.electronic_structure_problem)
+
+        # filter duplicates from list
+        computed_energies = [results.computed_energies[0]]
+        for comp_energy in results.computed_energies[1:]:
+            if not np.isclose(comp_energy, computed_energies[-1]):
+                computed_energies.append(comp_energy)
+
+        for idx, energy in enumerate(self.reference_energies):
+            self.assertAlmostEqual(computed_energies[idx], energy, places=4)
+
+    def test_numpy_factory_aux_ops(self):
         """Test NumPyEigenSolverFactory with ExcitedStatesEigensolver"""
 
         # pylint: disable=unused-argument
