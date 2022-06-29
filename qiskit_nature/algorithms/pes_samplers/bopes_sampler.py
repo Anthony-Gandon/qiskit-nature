@@ -13,7 +13,7 @@
 """The calculation of points on the Born-Oppenheimer Potential Energy Surface (BOPES)."""
 
 import logging
-from typing import Optional, List, Dict, Union, Callable
+from typing import Optional, List, Dict, Union, Callable, Tuple
 
 import numpy as np
 
@@ -139,6 +139,7 @@ class BOPESSampler:
                      perturbations to be varied.
             points: The points along the degrees of freedom to evaluate.
             aux_operators: Auxiliary operators to pass to the state_solver object.
+            transition_amplitude_pairs:
 
         Returns:
             BOPES Sampler Result

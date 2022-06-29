@@ -47,6 +47,8 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
         self._qubit_converter = qubit_converter
         self._solver = solver
 
+        self._transition_amplitude_pairs = None
+
     @property
     def solver(self) -> Union[Eigensolver, EigensolverFactory]:
         """Returns the minimum eigensolver or factory."""
@@ -56,6 +58,23 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
     def solver(self, solver: Union[Eigensolver, EigensolverFactory]) -> None:
         """Sets the minimum eigensolver or factory."""
         self._solver = solver
+
+    def set_eval_aux_ops_args(self, eval_aux_ops_args):
+        """
+        Set up various parameters to define if and how the auxiliary operators should be evaluated on excited states.
+        Args:
+            eval_aux_ops_args: Dictionnary of parameters
+                eval_aux_excited_states: If true, the auxiliary operators are evaluated on the aux operators
+                    (NB: Requires extra measurements)
+                quantum_instance: Must be provided if evaluate_aux_qeom is True
+                expectation: Must be provided if evaluate_aux_qeom is True
+                transition_amplitude_pairs:
+
+        Returns:
+
+        """
+        self._transition_amplitude_pairs = eval_aux_ops_args.get("transition_amplitude_pairs", None)
+
 
     def get_qubit_operators(
         self,
@@ -144,7 +163,12 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
         # by the user but also additional ones from the transformation
 
         main_operator, aux_ops = self.get_qubit_operators(problem, aux_operators)
-        raw_es_result = self._solver.compute_eigenvalues(main_operator, aux_ops)  # type: ignore
+        raw_es_result = self.solver.compute_eigenvalues(main_operator, aux_ops)  # type: ignore
+        transition_amplitudes = self.solver.compute_transition_amplitudes(
+            aux_ops,
+            self._transition_amplitude_pairs
+        )
+        raw_es_result.transition_amplitudes = transition_amplitudes
 
         eigenstate_result = EigenstateResult()
         eigenstate_result.raw_result = raw_es_result
