@@ -84,7 +84,7 @@ class QEOM(ExcitedStatesSolver):
             )
         self._excitations = excitations
 
-    def set_eval_aux_ops_args(self, eval_aux_ops_args:Dict):
+    def set_eval_aux_ops_args(self, eval_aux_ops_args: Dict):
         """
         Set up various parameters to define if and how the auxiliary operators should be evaluated
         on excited states.
@@ -96,7 +96,7 @@ class QEOM(ExcitedStatesSolver):
                 expectation: Must be provided if evaluate_aux_qeom is True
                 transition_amplitude_pairs: Specifies the transition amplitudes to evaluate
         """
-        self._eval_aux_excited_states = eval_aux_ops_args.get("eval_aux_excited_states",None)
+        self._eval_aux_excited_states = eval_aux_ops_args.get("eval_aux_excited_states", None)
         self._quantum_instance = eval_aux_ops_args.get("quantum_instance", None)
         self._expectation = eval_aux_ops_args.get("expectation", None)
         self._transition_amplitude_pairs = eval_aux_ops_args.get("transition_amplitude_pairs", None)
@@ -196,8 +196,8 @@ class QEOM(ExcitedStatesSolver):
 
         # 6. Computes the product metric which is needed for the evaluation of auxiliary operators.
         product_metric = self._compute_metric(measurement_results, expansion_coefs, size)
-        print("Product Metric")
-        print(np.real(product_metric))
+        # print("Product Metric")
+        # print(np.real(product_metric))
         # 7. Reconstructs the excitation operators On^\dag = |n><0| from the coefficients, the basis
         # operators, and the corrections.
         # If self._construct_true_eigenstates=True, then product_metric and measurement_results
@@ -398,11 +398,11 @@ class QEOM(ExcitedStatesSolver):
                 # theory, one would choose this according to the nature of the problem (i.e.
                 # whether it is fermionic or bosonic), but in practice, always choosing the
                 # anti-commutator has proven to be more robust.
-                q_mat_op = double_commutator(left_op, operator, right_op_1, sign=False)
+                q_mat_op = -double_commutator(left_op, operator, right_op_1, sign=False)
                 # In the case of the single commutator, we are always interested in the energy
                 # difference of two states. Thus, regardless of the problem's nature, we will
                 # always use the commutator.
-                w_mat_op = commutator(left_op, right_op_1)
+                w_mat_op = -commutator(left_op, right_op_1)
                 q_mat_op = None if len(q_mat_op) == 0 else q_mat_op
                 w_mat_op = None if len(w_mat_op) == 0 else w_mat_op
             else:
@@ -459,7 +459,7 @@ class QEOM(ExcitedStatesSolver):
                     for uu, _ in enumerate(mus)
                 ]
             )
-            gs_results = dict(zip(all_matrix_operators, gs_results[-len(all_matrix_operators) :]))
+            gs_results = dict(zip(all_matrix_operators, gs_results[-len(all_matrix_operators):]))
 
         m_mat = np.zeros((size, size), dtype=complex)
         v_mat = np.zeros((size, size), dtype=complex)
@@ -516,19 +516,24 @@ class QEOM(ExcitedStatesSolver):
 
         # these matrices are numpy arrays and therefore have the ``shape`` attribute
         q_mat = q_mat + q_mat.T - np.identity(q_mat.shape[0]) * q_mat
-        w_mat = w_mat + w_mat.T - np.identity(w_mat.shape[0]) * w_mat
-        m_mat = m_mat + m_mat.T - np.identity(m_mat.shape[0]) * m_mat
-        v_mat = v_mat + v_mat.T - np.identity(v_mat.shape[0]) * v_mat
+        w_mat = w_mat - w_mat.T - np.identity(w_mat.shape[0]) * w_mat
+        m_mat = m_mat + m_mat.T.conj() - np.identity(m_mat.shape[0]) * m_mat
+        v_mat = v_mat + v_mat.T.conj() - np.identity(v_mat.shape[0]) * v_mat
+
+        print(np.real(q_mat))
+        print(np.real(w_mat))
+        print(np.real(m_mat))
+        print(np.real(v_mat))
 
         q_mat = np.real(q_mat)
         w_mat = np.real(w_mat)
         m_mat = np.real(m_mat)
         v_mat = np.real(v_mat)
 
-        q_mat_std = q_mat_std / float(size**2)
-        w_mat_std = w_mat_std / float(size**2)
-        m_mat_std = m_mat_std / float(size**2)
-        v_mat_std = v_mat_std / float(size**2)
+        q_mat_std = q_mat_std / float(size ** 2)
+        w_mat_std = w_mat_std / float(size ** 2)
+        m_mat_std = m_mat_std / float(size ** 2)
+        v_mat_std = v_mat_std / float(size ** 2)
 
         logger.debug("\nQ:=========================\n%s", q_mat)
         logger.debug("\nW:=========================\n%s", w_mat)
@@ -553,11 +558,13 @@ class QEOM(ExcitedStatesSolver):
             2-D array storing the X and Y expansion coefficients
         """
         logger.debug("Diagonalizing qeom matrices for excited states...")
-        a_mat = np.matrixlib.bmat([[m_mat, q_mat], [q_mat.T.conj(), m_mat.T.conj()]])
-        b_mat = np.matrixlib.bmat([[v_mat, w_mat], [-w_mat.T.conj(), -v_mat.T.conj()]])
-
+        a_mat = np.matrixlib.bmat([[m_mat, q_mat], [q_mat.T.conj(), m_mat.T]])
+        b_mat = np.matrixlib.bmat([[v_mat, w_mat], [w_mat.T.conj(), -v_mat.T]])
+        # print(np.real(b_mat))
         res = linalg.eig(a_mat, b_mat)
-
+        # print("mat")
+        # print(np.real(a_mat))
+        # print(np.real(b_mat - 2 * overlap_matrix))
         # convert nan value into 0
         res[0][np.where(np.isnan(res[0]))] = 0.0
         # Only the positive eigenvalues are physical. We need to take care
@@ -569,20 +576,24 @@ class QEOM(ExcitedStatesSolver):
         # Since we may now have
         # small values (positive or negative) take the absolute and then threshold zero.
         logger.debug("... %s", res[0])
-        order = np.argsort(np.real(res[0]))
+        # res[0][::2] *= -1
+
+        print("energies: ", np.real(res[0]))
+        print("order: ", np.argsort(np.real(res[0])))
+        order = np.argsort(np.real(res[0]))  # [len(res[0])//2:]
         w = np.real(res[0])[order]
         logger.debug("Order real parts %s", order)
         logger.debug("Sorted real parts %s", w)
-        #w = np.abs(w[len(w) // 2 :])
         w = np.abs(w)
         w[np.abs(w) < 1e-06] = 0
         excitation_energies_gap = w
         # expansion_coefs = res[1][:, order[len(order) // 2 :]]
-        # expansion_coefs = res[1][:, order[: len(order) // 2]]
+        # expansion_coefs = res[1][:, order[len(order) // 2 - 1 ::-1]]
         # expansion_coefs = expansion_coefs[:, ::-1]
         expansion_coefs = res[1][:, order]
-        commutator_metric = expansion_coefs.T.conjugate() @ b_mat @ expansion_coefs
-        print(commutator_metric)
+        commutator_metric = expansion_coefs.T.conjugate() @ (b_mat) @ expansion_coefs
+        print("commutator_metric")
+        print(np.real(commutator_metric))
         return excitation_energies_gap, expansion_coefs
 
     def _eval_all_aux_ops(
@@ -667,7 +678,7 @@ class QEOM(ExcitedStatesSolver):
                         right_op = excited_operators_n["Odag_" + str(pair[1])]
                         on_op_om = on_op @ right_op
 
-                    on_aux_om_dag_ops[str_transition] =  on_op_om.reduce()
+                    on_aux_om_dag_ops[str_transition] = on_op_om.reduce()
 
             on_aux_om_dag_operators_tapered = (
                 self.qubit_converter._symmetry_reduce_no_clifford(
@@ -710,8 +721,8 @@ class QEOM(ExcitedStatesSolver):
         # Creates all the On and On^\dag operators
         general_excitation_operators = {}  # O(n)^\dag for n = 1,2,3,...,size
         general_excitation_operators_eval = {}  # O(n)^\dag for n = 1,2,3,...,size
-        operator_indices = list(range(1, size + 1))
-        # operator_indices = list(itertools.chain(range(-size, 0), range(1, size+1)))
+        # operator_indices = list(range(1, size + 1))
+        operator_indices = list(itertools.chain(range(-size, 0), range(1, size + 1)))
         alpha = np.zeros(len(operator_indices), dtype=complex)
         gamma_square = np.zeros(len(operator_indices), dtype=complex)
 
@@ -742,9 +753,9 @@ class QEOM(ExcitedStatesSolver):
                 (
                     general_excitation_operators[f"Odag_{operator_indices[n]}"]
                     - PauliOp(
-                        Pauli("I" * num_qubits),
-                        alpha[n],
-                    )
+                    Pauli("I" * num_qubits),
+                    alpha[n],
+                )
                 )
                 / np.sqrt(gamma_square[n])
             ).reduce()
@@ -875,6 +886,29 @@ class QEOM(ExcitedStatesSolver):
             eom_matrix_operators.update(tapered_hopping_ops)
 
         return eom_matrix_operators, hopping_ops_partially_tapered, size
+
+    def _build_overlap_matrix(self, measurement_results, size):
+        overlap_matrix_1 = np.zeros((size, size), dtype=complex)
+        overlap_matrix_2 = np.zeros((size, size), dtype=complex)
+        overlap_matrix_3 = np.zeros((size, size), dtype=complex)
+        overlap_matrix_4 = np.zeros((size, size), dtype=complex)
+
+        # print(measurement_results)
+        for id1 in range(size):
+            for id2 in range(size):
+                overlap_matrix_1[id1, id2] = measurement_results.get(f"Edag_{id1}", [0, 0])[0] * \
+                                             measurement_results.get(f"E_{id2}", [0, 0])[0]
+                overlap_matrix_2[id1, id2] = measurement_results.get(f"Edag_{id1}", [0, 0])[0] * \
+                                             measurement_results.get(f"Edag_{id2}", [0, 0])[0]
+                overlap_matrix_3[id1, id2] = measurement_results.get(f"E_{id1}", [0, 0])[0] * \
+                                             measurement_results.get(f"E_{id2}", [0, 0])[0]
+                overlap_matrix_4[id1, id2] = measurement_results.get(f"E_{id1}", [0, 0])[0] * \
+                                             measurement_results.get(f"Edag_{id2}", [0, 0])[0]
+
+        overlap_matrix = np.matrixlib.bmat([[overlap_matrix_1, overlap_matrix_2],
+                                            [overlap_matrix_3, overlap_matrix_4]
+                                            ])
+        return overlap_matrix
 
 
 class QEOMResult(EigensolverResult):
