@@ -192,10 +192,10 @@ class QEOM(ExcitedStatesSolver):
         ) = self._build_eom_matrices(measurement_results, size)
 
         # 5. Solve pseudo-eigenvalue problem
-        energy_gaps, expansion_coefs = self._compute_excitation_energies(m_mat, v_mat, q_mat, w_mat)
+        energy_gaps, expansion_coefs, commutator_metric = self._compute_excitation_energies(m_mat, v_mat, q_mat, w_mat)
 
         # 6. Computes the product metric which is needed for the evaluation of auxiliary operators.
-        product_metric = self._compute_metric(measurement_results, expansion_coefs, size)
+        #product_metric = self._compute_metric(measurement_results, expansion_coefs, size)
         # print("Product Metric")
         # print(np.real(product_metric))
         # 7. Reconstructs the excitation operators On^\dag = |n><0| from the coefficients, the basis
@@ -207,7 +207,7 @@ class QEOM(ExcitedStatesSolver):
             measurement_results,
             expansion_coefs,
             size,
-            product_metric,
+            commutator_metric,
         )
 
         # 8. Prepares results if self._eval_aux_excited_states is False
@@ -215,7 +215,6 @@ class QEOM(ExcitedStatesSolver):
             [groundstate_result.eigenenergies[0] + gap for gap in energy_gaps]
         )
         eigenenergies = np.append(groundstate_result.eigenenergies, excited_eigenenergies)
-        recalculated_excited_energies = np.zeros_like(eigenenergies)
 
         if not isinstance(groundstate_result.eigenstates[0], StateFn):
             eigenstates = [StateFn(groundstate_result.eigenstates[0])]
@@ -594,7 +593,7 @@ class QEOM(ExcitedStatesSolver):
         commutator_metric = expansion_coefs.T.conjugate() @ (b_mat) @ expansion_coefs
         print("commutator_metric")
         print(np.real(commutator_metric))
-        return excitation_energies_gap, expansion_coefs
+        return excitation_energies_gap, expansion_coefs, commutator_metric
 
     def _eval_all_aux_ops(
         self,
@@ -701,7 +700,7 @@ class QEOM(ExcitedStatesSolver):
         hopping_operators_eval,
         expansion_coefs: np.ndarray,
         size,
-        product_metric,
+        commutator_metric
     ) -> Dict[str, Dict[str, PauliSumOp]]:
         """
 
@@ -747,7 +746,8 @@ class QEOM(ExcitedStatesSolver):
         for n in range(0, len(operator_indices)):
             num_qubits = excitation_op.num_qubits
             alpha[n] = general_excitation_operators_eval[f"Odag_{operator_indices[n]}"]
-            gamma_square[n] = product_metric[n, n] - alpha[n] ** 2
+            #gamma_square[n] = product_metric[n, n] - alpha[n] ** 2
+            gamma_square[n] = commutator_metric[n, n]
 
             general_excitation_operators[f"Odag_{operator_indices[n]}"] = (
                 (
