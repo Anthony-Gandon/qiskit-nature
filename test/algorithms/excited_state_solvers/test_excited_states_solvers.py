@@ -180,24 +180,26 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
     def test_transition_amplitudes(self):
         """Test the evaluation of transition amplitudes with NumpyEigensolver"""
 
-        particle_nb_op = self.electronic_structure_problem.second_q_ops()['ParticleNumber']
-        aux_operators = {'PN': particle_nb_op}
+        particle_nb_op = self.electronic_structure_problem.second_q_ops()["ParticleNumber"]
+        aux_operators = {"PN": particle_nb_op}
         transition_amplitude_pairs = {
-            'names': ['PN'],
-            'indices': [(0, 1),
-                        (1, 0), (1, 2),
-                        (2, 0), (2, 1), (2, 3)]
+            "names": ["PN"],
+            "indices": [(0, 1), (1, 0), (1, 2), (2, 0), (2, 1), (2, 3)],
         }
         transition_amplitude_references = {
-            'PN_0_1': (0.0, 0.0),
-            'PN_1_0': (0.0, 0.0), 'PN_1_2': (0.0, 0.0),
-            'PN_2_0': (0.0, 0.0), 'PN_2_1': (0.0, 0.0), 'PN_2_3': (0.0, 0.0)
+            "PN_0_1": (0.0, 0.0),
+            "PN_1_0": (0.0, 0.0),
+            "PN_1_2": (0.0, 0.0),
+            "PN_2_0": (0.0, 0.0),
+            "PN_2_1": (0.0, 0.0),
+            "PN_2_3": (0.0, 0.0),
         }
 
         # pylint: disable=unused-argument
         def filter_criterion(eigenstate, eigenvalue, aux_values):
-            return np.isclose(aux_values["ParticleNumber"][0], 2.0) and \
-                   np.isclose(aux_values["Magnetization"][0], 0.0)
+            return np.isclose(aux_values["ParticleNumber"][0], 2.0) and np.isclose(
+                aux_values["Magnetization"][0], 0.0
+            )
 
         solver = NumPyEigensolverFactory(filter_criterion=filter_criterion)
         esc = ExcitedStatesEigensolver(self.qubit_converter, solver)
@@ -213,9 +215,7 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
 
         for key in transition_amplitude_references.keys():
             self.assertAlmostEqual(
-                transition_amplitude_references[key],
-                transition_amplitude_vals[key],
-                places=4
+                transition_amplitude_references[key], transition_amplitude_vals[key], places=4
             )
 
 

@@ -20,7 +20,7 @@ import sys
 import numpy as np
 from scipy import linalg
 
-from qiskit.algorithms.aux_ops_evaluator import eval_derivative_ansatz
+from qiskit import QuantumCircuit
 from qiskit.tools import parallel_map
 from qiskit.tools.events import TextProgressBar
 from qiskit.utils import algorithm_globals, QuantumInstance
@@ -35,14 +35,15 @@ from qiskit.opflow import (
     ExpectationBase,
     anti_commutator,
 )
-from qiskit.quantum_info import Pauli
+from qiskit.quantum_info import Pauli, Statevector
+
 from qiskit.opflow import PauliOp
 
 from qiskit.algorithms import eval_observables
 
 from qiskit_nature.converters.second_quantization.utils import ListOrDict
 from qiskit_nature import ListOrDictType
-from qiskit_nature.operators.second_quantization import SecondQuantizedOp
+from qiskit_nature.operators.second_quantization import SecondQuantizedOp, FermionicOp
 from qiskit_nature.problems.second_quantization import BaseProblem
 from qiskit_nature.results import EigenstateResult
 from .excited_states_solver import ExcitedStatesSolver
@@ -51,7 +52,7 @@ from ..ground_state_solvers import GroundStateSolver
 logger = logging.getLogger(__name__)
 
 
-class QEOM(ExcitedStatesSolver):
+class VQEEOM(ExcitedStatesSolver):
     """The calculation of excited states via the qEOM algorithm"""
 
     def __init__(
@@ -138,7 +139,7 @@ class QEOM(ExcitedStatesSolver):
         return self._transition_amplitude_pairs
 
     @transition_amplitude_pairs.setter
-    def eval_aux_excited_states(self, transition_amplitude_pairs: Optional[Dict]):
+    def transition_amplitude_pairs(self, transition_amplitude_pairs: Optional[Dict]):
         """Sets the eval_aux_excited_states boolean."""
         self._transition_amplitude_pairs = transition_amplitude_pairs
 
@@ -203,17 +204,17 @@ class QEOM(ExcitedStatesSolver):
 
         # If observables need to be evaluated on the excited states, then extra measurements are
         # necessary.
-        if self._eval_aux_excited_states:
-            tapered_hopping_ops = self.qubit_converter._symmetry_reduce_no_clifford(
-                hopping_ops_pre_tap, True
-            )
-            matrix_operators_dict.update(tapered_hopping_ops)
+        # if self._eval_aux_excited_states:
+        #     tapered_hopping_ops = self.qubit_converter._symmetry_reduce_no_clifford(
+        #         hopping_ops_pre_tap, True
+        #     )
+        #     matrix_operators_dict.update(tapered_hopping_ops)
 
         # 3. Run ground state calculation with all the matrix elements as auxiliaries
         groundstate_result = self._gsc.solve(problem, matrix_operators_dict)
         measurement_results = groundstate_result.aux_operator_eigenvalues[0]
 
-        # Tries to retrieve the ansatz as a circuit and set its parameters to the one
+        # Tries to retrieve the ansatz as a circuit and sets its parameters to the one
         # given by the GroundStateEigenSolver.
         # If the GrounsStateEigenSolver is not VQE then we take the eigenstate output.
         # This is needed for example for StateVector simulations with NumpyMinimumEigenSolver.
@@ -224,22 +225,29 @@ class QEOM(ExcitedStatesSolver):
         else:
             bound_ansatz = groundstate_result.eigenstates[0]
 
-        # 4. Post-process ground_state_result to construct eom matrices
         (
-            m_mat,
-            v_mat,
-            q_mat,
-            w_mat,
-            m_mat_std,
-            v_mat_std,
-            q_mat_std,
-            w_mat_std,
-        ) = self._build_eom_matrices(measurement_results, size)
+            energies,
+            expansion_coefs,
+            circuit_dict_diag,
+            circuit_dict_antidiag,
+        ) = self._circuit_preparation(bound_ansatz)
 
-        # 5. Solve pseudo-eigenvalue problem
-        energy_gaps, expansion_coefs, commutator_metric = self._compute_excitation_energies(
-            m_mat, v_mat, q_mat, w_mat
-        )
+        # 4. Post-process ground_state_result to construct eom matrices
+        # (
+        #     m_mat,
+        #     v_mat,
+        #     q_mat,
+        #     w_mat,
+        #     m_mat_std,
+        #     v_mat_std,
+        #     q_mat_std,
+        #     w_mat_std,
+        # ) = self._build_eom_matrices(measurement_results, size)
+        #
+        # # 5. Solve pseudo-eigenvalue problem
+        # energy_gaps, expansion_coefs, commutator_metric = self._compute_excitation_energies(
+        #     m_mat, v_mat, q_mat, w_mat
+        # )
 
         # 6. Reconstructs the excitation operators On^\dag = |n><0| from the coefficients, the basis
         # operators, and the corrections.
@@ -250,13 +258,10 @@ class QEOM(ExcitedStatesSolver):
             measurement_results,
             expansion_coefs,
             size,
-            commutator_metric,
         )
 
         # 8. Prepares results if self._eval_aux_excited_states is False
-        excited_eigenenergies = np.asarray(
-            [groundstate_result.eigenenergies[0] + gap for gap in energy_gaps]
-        )
+        excited_eigenenergies = np.asarray(energies)
         eigenenergies = np.append(groundstate_result.eigenenergies, excited_eigenenergies)
 
         if not isinstance(groundstate_result.eigenstates[0], StateFn):
@@ -270,40 +275,43 @@ class QEOM(ExcitedStatesSolver):
         # 9. Evaluation of auxiliaries on excited states if self._eval_aux_excited_states is True
         if self._eval_aux_excited_states:
             aux_operator_eigenvalues_excited_states = self._eval_all_aux_ops(
-                excitation_operators_pre_tap,
-                pre_tap_aux_ops,
-                bound_ansatz,
-                groundstate_result
+                expansion_coefs, pre_tap_aux_ops, circuit_dict_diag, circuit_dict_antidiag, size
             )
 
-            transition_amplitudes = self._compute_transition_amplitudes(
-                excitation_operators_pre_tap,
-                pre_tap_aux_ops,
-                bound_ansatz,
-            )
+            # transition_amplitudes = self._compute_transition_amplitudes(
+            #     excitation_operators_pre_tap,
+            #     pre_tap_aux_ops,
+            #     bound_ansatz,
+            # )
 
             # Updates the excited states
-            for excitation_op_n in excitation_operators_pre_tap.values():
-                eigenstates.append((excitation_op_n @ eigenstates[0]).eval())
+            # for excitation_op_n in excitation_operators_pre_tap.values():
+            #     eigenstates.append((excitation_op_n @ eigenstates[0]).eval())
 
             # Updates the eigenvalues of auxiliaries on excited states
-            aux_operator_eigenvalues = (
-                aux_operator_eigenvalues + aux_operator_eigenvalues_excited_states
-            )
+            print(aux_operator_eigenvalues)
+            for aux_op_str, aux_op in aux_operator_eigenvalues[0].items():
+                if aux_op_str in aux_operator_eigenvalues_excited_states.keys():
+                    aux_operator_eigenvalues_excited_states[aux_op_str] = np.append(
+                        np.array([aux_operator_eigenvalues[0][aux_op_str][0]]),
+                        aux_operator_eigenvalues_excited_states[aux_op_str],
+                    )
 
+            aux_operator_eigenvalues = aux_operator_eigenvalues_excited_states.copy()
+            print(aux_operator_eigenvalues)
         # 10. Refactor the results
         qeom_result = QEOMResult()
         qeom_result.ground_state_raw_result = groundstate_result.raw_result
         qeom_result.expansion_coefficients = expansion_coefs
-        qeom_result.excitation_energies = energy_gaps
-        qeom_result.m_matrix = m_mat
-        qeom_result.v_matrix = v_mat
-        qeom_result.q_matrix = q_mat
-        qeom_result.w_matrix = w_mat
-        qeom_result.m_matrix_std = m_mat_std
-        qeom_result.v_matrix_std = v_mat_std
-        qeom_result.q_matrix_std = q_mat_std
-        qeom_result.w_matrix_std = w_mat_std
+        # qeom_result.excitation_energies = energy_gaps
+        # qeom_result.m_matrix = m_mat
+        # qeom_result.v_matrix = v_mat
+        # qeom_result.q_matrix = q_mat
+        # qeom_result.w_matrix = w_mat
+        # qeom_result.m_matrix_std = m_mat_std
+        # qeom_result.v_matrix_std = v_mat_std
+        # qeom_result.q_matrix_std = q_mat_std
+        # qeom_result.w_matrix_std = w_mat_std
 
         qeom_result.eigenstates = eigenstates
         qeom_result.eigenvalues = eigenenergies
@@ -557,6 +565,11 @@ class QEOM(ExcitedStatesSolver):
         m_mat = m_mat + m_mat.T.conj() - np.identity(m_mat.shape[0]) * m_mat
         v_mat = v_mat + v_mat.T.conj() - np.identity(v_mat.shape[0]) * v_mat
 
+        # print(np.real(q_mat))
+        # print(np.real(w_mat))
+        # print(np.real(m_mat))
+        # print(np.real(v_mat))
+
         q_mat = np.real(q_mat)
         w_mat = np.real(w_mat)
         m_mat = np.real(m_mat)
@@ -605,9 +618,8 @@ class QEOM(ExcitedStatesSolver):
         # small values (positive or negative) take the absolute and then threshold zero.
         logger.debug("... %s", res[0])
         logger.debug("Without filtering +/- %s", np.real(res[0]))
-        order = np.argsort(np.real(res[0]))[: len(res[0]) // 2 :][::-1]
+        order = np.argsort(np.real(res[0]))  # [:len(res[0])//2:][::-1]
         w = np.real(res[0])[order]
-        print("w", w)
         logger.debug("Order real parts %s", order)
         logger.debug("Sorted real parts %s", w)
         w = np.abs(w)
@@ -621,60 +633,66 @@ class QEOM(ExcitedStatesSolver):
         return excitation_energies_gap, expansion_coefs, commutator_metric
 
     def _eval_all_aux_ops(
-        self,
-        excited_operators_n,
-        pre_tap_aux_ops,
-        bound_ansatz,
-        groundstate_result
+        self, expansion_coefs, pre_tap_aux_ops, circuit_dict_diag, circuit_dict_antidiag, size
     ):
 
         # Creates all the On @ Aux @ On^\dag operators
-        general_on_aux_on_dag_operators = {}
-        for on_str, on_dag in excited_operators_n.items():
-            listordict_aux_op_on = (
-                ListOrDict()
-            )  # {"Identity": (on_dag.adjoint() @ on_dag).reduce()}
-            for aux_str, aux_op in iter(pre_tap_aux_ops):
-                listordict_aux_op_on[aux_str] = (on_dag.adjoint() @ aux_op @ on_dag).reduce()
-            if not self.qubit_converter.z2symmetries.is_empty():
-                listordict_aux_op_on_tapered = self.qubit_converter._symmetry_reduce_no_clifford(
-                    listordict_aux_op_on, True
+        results = {}
+        for idx, circuit in circuit_dict_diag.items():
+            value = eval_observables(
+                self.quantum_instance, circuit, pre_tap_aux_ops, self.expectation
+            )
+            results[idx] = {}
+            for idval, val in value.items():
+                results[idx][idval] = val[0]
+
+        for idx_1, excitation_1 in circuit_dict_antidiag.items():
+            if idx_1[0] < idx_1[1]:
+                # print(idx_1, idx_2)
+                value = eval_observables(
+                    self.quantum_instance,
+                    circuit_dict_antidiag[(idx_1[0], idx_1[1])],
+                    pre_tap_aux_ops,
+                    self.expectation,
                 )
-            else:
-                listordict_aux_op_on_tapered = ListOrDict(listordict_aux_op_on)
-
-            general_on_aux_on_dag_operators[on_str] = listordict_aux_op_on_tapered
-
-        aux_operator_eigenvalues_excited_states = []  # Eigenvalues of Aux_ops
-        for index_n, on_aux_on_dag_operator in enumerate(general_on_aux_on_dag_operators.values()):
-            if len(on_aux_on_dag_operator) != 0:
-                not_normalized_eigenvalues = eval_observables(
-                    self._quantum_instance, bound_ansatz, on_aux_on_dag_operator, self._expectation
-                )
-                gradients = eval_derivative_ansatz(self._quantum_instance, bound_ansatz, self.solver.ansatz, groundstate_result.raw_result.optimal_point,  on_aux_on_dag_operator, self._expectation
-                )
-            else:
-                not_normalized_eigenvalues = {}
-
-            if isinstance(not_normalized_eigenvalues, dict):
-
-                # TODO Fix the calculation of the variance + the expectation value
-
-                aux_operator_eigenvalues_excited_states.append({})
-                for op_name, op_eigenval in not_normalized_eigenvalues.items():
-                    aux_operator_eigenvalues_excited_states[-1][op_name] = (
-                        op_eigenval[0],
-                        op_eigenval[1],
+                print("value", value)
+                results[idx_1] = {}
+                for idval, val in value.items():
+                    results[idx_1][idval] = (
+                        val[0]
+                        - 0.5 * results[(idx_1[0], idx_1[0])][idval]
+                        - 0.5 * results[(idx_1[1], idx_1[1])][idval]
                     )
 
-            elif isinstance(not_normalized_eigenvalues, list):
-                aux_operator_eigenvalues_excited_states.append([])
-                for op_name, op_eigenval in enumerate(not_normalized_eigenvalues):
-                    aux_operator_eigenvalues_excited_states[index_n].append(
-                        (op_eigenval[0], op_eigenval[1])
-                    )
+        # for id in results.keys():
+        #     print(f"results + {id}", results[id])
+        total = {}
+        for aux_op_name in pre_tap_aux_ops.keys():
+            mss_mat = np.zeros((size, size), dtype=complex)
+            msd_mat = np.zeros((size, size), dtype=complex)
+            mds_mat = np.zeros((size, size), dtype=complex)
+            mdd_mat = np.zeros((size, size), dtype=complex)
 
-        return aux_operator_eigenvalues_excited_states
+            for k in range(size):
+                for l in range(size):
+                    temp = results.get((f"E_{k}", f"E_{l}"), results.get((f"E_{l}", f"E_{k}"), 0.0))
+                    if isinstance(temp, Dict) and len(temp) != 0:
+                        mss_mat[k, l] = temp[aux_op_name]
+                    else:
+                        mss_mat[k, l] = 0.0
+
+                    temp2 = results.get(
+                        (f"Edag_{k}", f"Edag_{l}"), results.get((f"Edag_{l}", f"Edag_{k}"), 0.0)
+                    )
+                    if isinstance(temp2, Dict) and len(temp) != 0:
+                        mdd_mat[k, l] = temp2[aux_op_name]
+                    else:
+                        mdd_mat[k, l] = 0.0
+
+            a_mat = np.matrixlib.bmat([[mss_mat, -msd_mat], [-mds_mat, mdd_mat]])
+
+            total[aux_op_name] = np.diag(expansion_coefs.T @ a_mat @ expansion_coefs)
+        return total
 
     def _compute_transition_amplitudes(
         self,
@@ -724,7 +742,6 @@ class QEOM(ExcitedStatesSolver):
         hopping_operators_eval,
         expansion_coefs: np.ndarray,
         size,
-        commutator_metric,
     ) -> Dict[str, Dict[str, PauliSumOp]]:
         """
 
@@ -744,8 +761,8 @@ class QEOM(ExcitedStatesSolver):
         # Creates all the On and On^\dag operators
         general_excitation_operators = {}  # O(n)^\dag for n = 1,2,3,...,size
         general_excitation_operators_eval = {}  # O(n)^\dag for n = 1,2,3,...,size
-        operator_indices = list(range(1, size + 1))
-        # operator_indices = list(itertools.chain(range(-size, 0), range(1, size + 1)))
+        # operator_indices = list(range(1, size + 1))
+        operator_indices = list(itertools.chain(range(-size, 0), range(1, size + 1)))
         alpha = np.zeros(len(operator_indices), dtype=complex)
         gamma_square = np.zeros(len(operator_indices), dtype=complex)
 
@@ -770,7 +787,7 @@ class QEOM(ExcitedStatesSolver):
         for n in range(0, len(operator_indices)):
             num_qubits = excitation_op.num_qubits
             alpha[n] = general_excitation_operators_eval[f"Odag_{operator_indices[n]}"]
-            gamma_square[n] = commutator_metric[n, n]
+            gamma_square[n] = 1
 
             general_excitation_operators[f"Odag_{operator_indices[n]}"] = (
                 (
@@ -875,6 +892,165 @@ class QEOM(ExcitedStatesSolver):
         )
 
         return eom_matrix_operators, hopping_ops_pre_tap, size
+
+    def _circuit_preparation(self, bound_ansatz):
+
+        num_qubit = bound_ansatz.num_qubits
+        excitation_list = bound_ansatz._get_excitation_list()
+        size = len(excitation_list)
+        excitation_dict = {
+            "E_0": excitation_list[0],
+            "E_1": excitation_list[1],
+            "E_2": excitation_list[2],
+        }
+        excitation_dict_dag = {
+            "Edag_0": tuple(reversed(excitation_list[0])),
+            "Edag_1": tuple(reversed(excitation_list[1])),
+            "Edag_2": tuple(reversed(excitation_list[2])),
+        }
+
+        # Diagonal elements
+        def prepare_excitation_operators(excitation_tuple):
+            occ = excitation_tuple[0]
+            unocc = excitation_tuple[1]
+            circuit = QuantumCircuit(num_qubit)
+
+            for index_occ in occ:
+                circuit.x(index_occ)
+            for index_unocc in unocc:
+                circuit.x(index_unocc)
+            return circuit
+
+        circuit_dict_diag = {}
+        for idx, excitation in excitation_dict.items():
+            circuit_dict_diag[(idx, idx)] = prepare_excitation_operators(excitation) + bound_ansatz
+        for idx, excitation in excitation_dict_dag.items():
+            circuit_dict_diag[(idx, idx)] = prepare_excitation_operators(excitation) + bound_ansatz
+
+        # Trace for testing the computation of the eigenstates
+        # for circ in circuit_dict_diag.values():
+        #     psi = Statevector.from_instruction(circ).data
+        #     print(circ)
+        #     print(np.real(psi))
+
+        results = {}
+        for idx, circuit in circuit_dict_diag.items():
+            value = eval_observables(
+                self.quantum_instance,
+                circuit,
+                {"H": self._untapered_qubit_op_main},
+                self.expectation,
+            )
+            results[idx] = value["H"][0]
+        # print(results)
+
+        # Anti-diagonal elements
+        def prepare_excitation_operators_superposition(excitation_tuple1, excitation_tuple2):
+            circuit = prepare_excitation_operators(excitation_tuple1)
+            occ1 = excitation_tuple1[0]
+            occ2 = excitation_tuple2[0]
+            unocc1 = excitation_tuple1[1]
+            unocc2 = excitation_tuple2[1]
+            diff1 = [exc for exc in occ1 if exc not in occ2] + [
+                exc for exc in occ2 if exc not in occ1
+            ]
+            diff2 = [exc for exc in unocc1 if exc not in unocc2] + [
+                exc for exc in unocc2 if exc not in unocc1
+            ]
+            ref_pos = [exc for exc in unocc2 if exc not in unocc1][0]
+            # print(ref_pos)
+            # print("diff1", diff1)
+            # print("diff2", diff2)
+            circuit.h(ref_pos)
+            for index_occ in diff1:
+                if index_occ != ref_pos:
+                    circuit.cnot(ref_pos, index_occ)
+            for index_unocc in diff2:
+                if index_unocc != ref_pos:
+                    circuit.cnot(ref_pos, index_unocc)
+
+            return circuit
+
+        # print(excitation_dict)
+
+        circuit_dict_antidiag = {}
+        for idx_1, excitation_1 in excitation_dict.items():
+            for idx_2, excitation_2 in excitation_dict.items():
+                if idx_1 < idx_2:
+                    # print(idx_1, idx_2)
+                    circuit_dict_antidiag[(idx_1, idx_2)] = (
+                        prepare_excitation_operators_superposition(excitation_1, excitation_2)
+                        + bound_ansatz
+                    )
+        for idx_1, excitation_1 in excitation_dict_dag.items():
+            for idx_2, excitation_2 in excitation_dict_dag.items():
+                if idx_1 < idx_2:
+                    circuit_dict_antidiag[(idx_1, idx_2)] = (
+                        prepare_excitation_operators_superposition(excitation_1, excitation_2)
+                        + bound_ansatz
+                    )
+
+        # for idx, circ in circuit_dict_antidiag.items():
+        #     psi = Statevector.from_instruction(circ).data
+        #     print(idx)
+        #     print(circ)
+        #     print(np.real(psi))
+
+        for idx_1, excitation_1 in excitation_dict.items():
+            for idx_2, excitation_2 in excitation_dict.items():
+                if idx_1 < idx_2:
+                    # print(idx_1, idx_2)
+                    value = eval_observables(
+                        self.quantum_instance,
+                        circuit_dict_antidiag[(idx_1, idx_2)],
+                        {"H": self._untapered_qubit_op_main},
+                        self.expectation,
+                    )
+
+                    results[(idx_1, idx_2)] = (
+                        value["H"][0]
+                        - 0.5 * results[(idx_1, idx_1)]
+                        - 0.5 * results[(idx_2, idx_2)]
+                    )
+
+        for idx_1, excitation_1 in excitation_dict_dag.items():
+            for idx_2, excitation_2 in excitation_dict_dag.items():
+                if idx_1 < idx_2:
+                    value = eval_observables(
+                        self.quantum_instance,
+                        circuit_dict_antidiag[(idx_1, idx_2)],
+                        {"H": self._untapered_qubit_op_main},
+                        self.expectation,
+                    )
+                    results[(idx_1, idx_2)] = (
+                        value["H"][0]
+                        - 0.5 * results[(idx_1, idx_1)]
+                        - 0.5 * results[(idx_2, idx_2)]
+                    )
+
+        # print(results)
+
+        mss_mat = np.zeros((size, size), dtype=complex)
+        msd_mat = np.zeros((size, size), dtype=complex)
+        mds_mat = np.zeros((size, size), dtype=complex)
+        mdd_mat = np.zeros((size, size), dtype=complex)
+
+        for k in range(size):
+            for l in range(size):
+                mss_mat[k, l] = results.get(
+                    (f"E_{k}", f"E_{l}"), results.get((f"E_{l}", f"E_{k}"), 0.0)
+                )
+                mdd_mat[k, l] = results.get(
+                    (f"Edag_{k}", f"Edag_{l}"), results.get((f"Edag_{l}", f"Edag_{k}"), 0.0)
+                )
+
+        a_mat = np.matrixlib.bmat([[mss_mat, -msd_mat], [-mds_mat, mdd_mat]])
+        res = linalg.eig(a_mat)
+
+        # print(a_mat)
+        # print("eigenvalues", np.real(res[0]))
+        # print(res[1])
+        return res[0], res[1], circuit_dict_diag, circuit_dict_antidiag
 
 
 class QEOMResult(EigensolverResult):
