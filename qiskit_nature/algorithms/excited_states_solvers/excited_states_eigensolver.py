@@ -163,10 +163,10 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
 
         main_operator, aux_ops = self.get_qubit_operators(problem, aux_operators)
         raw_es_result = self.solver.compute_eigenvalues(main_operator, aux_ops)  # type: ignore
-        transition_amplitudes = self.solver.compute_transition_amplitudes(
-            aux_ops, self._transition_amplitude_pairs
-        )
-        raw_es_result.transition_amplitudes = transition_amplitudes
+        # transition_amplitudes = self.solver.compute_transition_amplitudes(
+        #     aux_ops, self._transition_amplitude_pairs
+        # )
+        # raw_es_result.transition_amplitudes = transition_amplitudes
 
         eigenstate_result = EigenstateResult()
         eigenstate_result.raw_result = raw_es_result

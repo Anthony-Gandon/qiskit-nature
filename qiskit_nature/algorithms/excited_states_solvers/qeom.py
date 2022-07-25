@@ -20,7 +20,7 @@ import sys
 import numpy as np
 from scipy import linalg
 
-from qiskit.algorithms.aux_ops_evaluator import eval_derivative_ansatz
+#from qiskit.algorithms.aux_ops_evaluator import eval_derivative_ansatz
 from qiskit.tools import parallel_map
 from qiskit.tools.events import TextProgressBar
 from qiskit.utils import algorithm_globals, QuantumInstance
@@ -651,8 +651,8 @@ class QEOM(ExcitedStatesSolver):
                 not_normalized_eigenvalues = eval_observables(
                     self._quantum_instance, bound_ansatz, on_aux_on_dag_operator, self._expectation
                 )
-                gradients = eval_derivative_ansatz(self._quantum_instance, bound_ansatz, self.solver.ansatz, groundstate_result.raw_result.optimal_point,  on_aux_on_dag_operator, self._expectation
-                )
+                # gradients = eval_derivative_ansatz(self._quantum_instance, bound_ansatz, self.solver.ansatz, groundstate_result.raw_result.optimal_point,  on_aux_on_dag_operator, self._expectation
+                # )
             else:
                 not_normalized_eigenvalues = {}
 
