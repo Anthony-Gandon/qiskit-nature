@@ -313,7 +313,7 @@ class QEOM(ExcitedStatesSolver):
         qeom_result.gamma_square = gamma_square
 
         result = problem.interpret(qeom_result)
-        return result, excitation_operators_pre_tap, hopping_ops_pre_tap, expansion_coefs
+        return result#, excitation_operators_pre_tap, hopping_ops_pre_tap, expansion_coefs
 
     def _build_all_commutators(
         self,

@@ -163,24 +163,7 @@ class VQEEOM(ExcitedStatesSolver):
         problem: BaseProblem,
         aux_operators: Optional[ListOrDictType[SecondQuantizedOp]] = None,
     ) -> EigenstateResult:
-        """Run the excited-states calculation.
 
-        Construct and solves the EOM pseudo-eigenvalue problem to obtain the excitation energies
-        and the excitation operators expansion coefficients.
-
-        Args:
-            problem: a class encoding a problem to be solved.
-            aux_operators: Additional auxiliary operators to evaluate.
-
-        Returns:
-            An interpreted :class:`~.EigenstateResult`. For more information see also
-            :meth:`~.BaseProblem.interpret`.
-        """
-
-        # 1. Prepare the auxiliary operators
-        # Prepares self._untapered_qubit_op_main
-        # Prepares self._pre_tap_qubit_op_main to speed up the tapering.
-        # Note that the tapering must be delayed until the building of the commutators.
         pre_tap_aux_ops = self._prepare_second_q_ops(problem, aux_operators)
 
         # 2. Prepare the matrix operators.
@@ -200,19 +183,9 @@ class VQEEOM(ExcitedStatesSolver):
         tapered_aux_ops_custom = self.qubit_converter._symmetry_reduce_no_clifford(
             pre_tap_aux_ops_custom, True
         )
-        matrix_operators_dict.update(tapered_aux_ops_custom)
-
-        # If observables need to be evaluated on the excited states, then extra measurements are
-        # necessary.
-        # if self._eval_aux_excited_states:
-        #     tapered_hopping_ops = self.qubit_converter._symmetry_reduce_no_clifford(
-        #         hopping_ops_pre_tap, True
-        #     )
-        #     matrix_operators_dict.update(tapered_hopping_ops)
 
         # 3. Run ground state calculation with all the matrix elements as auxiliaries
-        groundstate_result = self._gsc.solve(problem, matrix_operators_dict)
-        measurement_results = groundstate_result.aux_operator_eigenvalues[0]
+        groundstate_result = self._gsc.solve(problem, tapered_aux_ops_custom)
 
         # Tries to retrieve the ansatz as a circuit and sets its parameters to the one
         # given by the GroundStateEigenSolver.
@@ -232,34 +205,6 @@ class VQEEOM(ExcitedStatesSolver):
             circuit_dict_antidiag,
         ) = self._circuit_preparation(bound_ansatz)
 
-        # 4. Post-process ground_state_result to construct eom matrices
-        # (
-        #     m_mat,
-        #     v_mat,
-        #     q_mat,
-        #     w_mat,
-        #     m_mat_std,
-        #     v_mat_std,
-        #     q_mat_std,
-        #     w_mat_std,
-        # ) = self._build_eom_matrices(measurement_results, size)
-        #
-        # # 5. Solve pseudo-eigenvalue problem
-        # energy_gaps, expansion_coefs, commutator_metric = self._compute_excitation_energies(
-        #     m_mat, v_mat, q_mat, w_mat
-        # )
-
-        # 6. Reconstructs the excitation operators On^\dag = |n><0| from the coefficients, the basis
-        # operators, and the corrections.
-        # If self._construct_true_eigenstates=True, then commutator_metric and measurement_results
-        # contain all the terms necessary for the correction of On^\dag
-        excitation_operators_pre_tap, alpha, gamma_square = self._construct_excited_operators_n(
-            hopping_ops_pre_tap,
-            measurement_results,
-            expansion_coefs,
-            size,
-        )
-
         # 8. Prepares results if self._eval_aux_excited_states is False
         excited_eigenenergies = np.asarray(energies)
         eigenenergies = np.append(groundstate_result.eigenenergies, excited_eigenenergies)
@@ -278,17 +223,6 @@ class VQEEOM(ExcitedStatesSolver):
                 expansion_coefs, pre_tap_aux_ops, circuit_dict_diag, circuit_dict_antidiag, size
             )
 
-            # transition_amplitudes = self._compute_transition_amplitudes(
-            #     excitation_operators_pre_tap,
-            #     pre_tap_aux_ops,
-            #     bound_ansatz,
-            # )
-
-            # Updates the excited states
-            # for excitation_op_n in excitation_operators_pre_tap.values():
-            #     eigenstates.append((excitation_op_n @ eigenstates[0]).eval())
-
-            # Updates the eigenvalues of auxiliaries on excited states
             print(aux_operator_eigenvalues)
             for aux_op_str, aux_op in aux_operator_eigenvalues[0].items():
                 if aux_op_str in aux_operator_eigenvalues_excited_states.keys():
@@ -303,25 +237,14 @@ class VQEEOM(ExcitedStatesSolver):
         qeom_result = QEOMResult()
         qeom_result.ground_state_raw_result = groundstate_result.raw_result
         qeom_result.expansion_coefficients = expansion_coefs
-        # qeom_result.excitation_energies = energy_gaps
-        # qeom_result.m_matrix = m_mat
-        # qeom_result.v_matrix = v_mat
-        # qeom_result.q_matrix = q_mat
-        # qeom_result.w_matrix = w_mat
-        # qeom_result.m_matrix_std = m_mat_std
-        # qeom_result.v_matrix_std = v_mat_std
-        # qeom_result.q_matrix_std = q_mat_std
-        # qeom_result.w_matrix_std = w_mat_std
 
         qeom_result.eigenstates = eigenstates
         qeom_result.eigenvalues = eigenenergies
         qeom_result.transition_amplitudes = transition_amplitudes
         qeom_result.aux_operator_eigenvalues = aux_operator_eigenvalues
-        qeom_result.alpha = alpha
-        qeom_result.gamma_square = gamma_square
 
         result = problem.interpret(qeom_result)
-        return result, excitation_operators_pre_tap, hopping_ops_pre_tap, expansion_coefs
+        return result
 
     def _build_all_commutators(
         self,
@@ -383,8 +306,6 @@ class VQEEOM(ExcitedStatesSolver):
             z2_symmetries = self.qubit_converter.z2symmetries
         except AttributeError:
             z2_symmetries = Z2Symmetries([], [], [])
-
-        # print(z2_symmetries)
 
         if not z2_symmetries.is_empty():
             combinations = itertools.product([1, -1], repeat=len(z2_symmetries.symmetries))

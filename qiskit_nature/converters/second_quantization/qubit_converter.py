@@ -467,7 +467,6 @@ class QubitConverter:
         converted_ops: ListOrDict[PauliSumOp],
         check_commutes: bool,
     ) -> ListOrDict[PauliSumOp]:
-
         if self._z2symmetries is None or self._z2symmetries.is_empty():
             tapered_qubit_ops = converted_ops
         else:

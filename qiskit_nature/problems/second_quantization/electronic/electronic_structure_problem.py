@@ -232,7 +232,13 @@ class ElectronicStructureProblem(BaseProblem):
     def _pick_sector(z2_symmetries: Z2Symmetries, hf_str: List[bool]) -> List[int]:
         # Finding all the symmetries using the find_Z2_symmetries:
         taper_coeff: List[int] = []
+        print("HF", hf_str)
         for sym in z2_symmetries.symmetries:
+            print("sym", sym)
+            print("z", sym.z)
+            print("and", np.logical_and(sym.z, hf_str))
+            print("xor", np.logical_xor.reduce(np.logical_and(sym.z, hf_str)))
+
             coeff = -1 if np.logical_xor.reduce(np.logical_and(sym.z, hf_str)) else 1
             taper_coeff.append(coeff)
 
