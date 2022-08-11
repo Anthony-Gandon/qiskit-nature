@@ -198,6 +198,7 @@ class BOPESSampler:
 
         # Iterate over the points
         for i, point in enumerate(points):
+            print(f"Step : {i} out of : {len(points)}")
             logger.info("Point %s of %s", i + 1, len(points))
             raw_result = self._run_single_point(point)  # dict of results
             raw_results[point] = raw_result
@@ -225,7 +226,10 @@ class BOPESSampler:
                 "Driver must be ElectronicStructureMoleculeDriver or VibrationalStructureMoleculeDriver."
             )
 
-        self._driver.molecule.perturbations = [point]
+        if isinstance(point, float):
+            self._driver.molecule.perturbations = [point]
+        else:
+            self._driver.molecule.perturbations = point
 
         # find closest previously run point and take optimal parameters
         if self._bootstrap and self._is_variational_solver:

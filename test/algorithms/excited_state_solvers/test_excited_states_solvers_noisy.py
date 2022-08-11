@@ -75,8 +75,8 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
         """Test NumPyMinimumEigenSolver with QEOM"""
         solver = NumPyMinimumEigensolver()
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
-        esc = QEOM(gsc, "sd")
-        results = esc.solve(self.electronic_structure_problem, expectation=self.expectation)
+        esc = QEOM(gsc, "sd", quantum_instance=self.quantum_instance, expectation=self.expectation)
+        results = esc.solve(self.electronic_structure_problem)
 
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_energies[idx], energy, places=4)
@@ -126,8 +126,8 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
     def _solve_with_vqe_mes(self, converter: QubitConverter):
         solver = VQEUCCFactory(self.quantum_instance, include_custom=True)
         gsc = GroundStateEigensolver(converter, solver)
-        esc = QEOM(gsc, "sd")
-        results = esc.solve(self.electronic_structure_problem, expectation=self.expectation)
+        esc = QEOM(gsc, "sd", quantum_instance=self.quantum_instance, expectation=self.expectation)
+        results = esc.solve(self.electronic_structure_problem)
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_energies[idx], energy, places=4)
 

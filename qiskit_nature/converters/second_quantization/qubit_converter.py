@@ -462,7 +462,7 @@ class QubitConverter:
 
         return tapered_qubit_ops
 
-    def _symmetry_reduce_no_clifford(
+    def symmetry_reduce_no_clifford(
         self,
         converted_ops: ListOrDict[PauliSumOp],
         check_commutes: bool,

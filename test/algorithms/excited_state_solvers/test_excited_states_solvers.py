@@ -79,7 +79,7 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
         """Test NumPyMinimumEigenSolver with QEOM"""
         solver = NumPyMinimumEigensolver()
         gsc = GroundStateEigensolver(self.qubit_converter, solver)
-        esc = QEOM(gsc, "sd")
+        esc = QEOM(gsc, "sd", quantum_instance=self.quantum_instance, expectation=self.expectation)
         results = esc.solve(self.electronic_structure_problem)
 
         for idx, energy in enumerate(self.reference_energies):
@@ -130,9 +130,8 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
     def _solve_with_vqe_mes(self, converter: QubitConverter):
         solver = VQEUCCFactory(quantum_instance=self.quantum_instance)
         gsc = GroundStateEigensolver(converter, solver)
-        esc = QEOM(gsc, "sd")
+        esc = QEOM(gsc, "sd", quantum_instance=self.quantum_instance, expectation=self.expectation)
         results = esc.solve(self.electronic_structure_problem)
-        print(results.computed_energies)
 
         for idx, energy in enumerate(self.reference_energies):
             self.assertAlmostEqual(results.computed_energies[idx], energy, places=4)
@@ -182,10 +181,9 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
 
         particle_nb_op = self.electronic_structure_problem.second_q_ops()["ParticleNumber"]
         aux_operators = {"PN": particle_nb_op}
-        transition_amplitude_pairs = {
-            "names": ["PN"],
-            "indices": [(0, 1), (1, 0), (1, 2), (2, 0), (2, 1), (2, 3)],
-        }
+        transition_amplitude_names = ["PN"]
+        transition_amplitude_pairs = [(0, 1), (1, 0), (1, 2), (2, 0), (2, 1), (2, 3)]
+
         transition_amplitude_references = {
             "PN_0_1": (0.0, 0.0),
             "PN_1_0": (0.0, 0.0),
@@ -210,7 +208,7 @@ class TestNumericalQEOMESCCalculation(QiskitNatureTestCase):
         esc.solve(self.electronic_structure_problem)
 
         transition_amplitude_vals = esc.solver.compute_transition_amplitudes(
-            aux_ops, transition_amplitude_pairs
+            aux_ops, transition_amplitude_names, transition_amplitude_pairs
         )
 
         for key in transition_amplitude_references.keys():
