@@ -266,7 +266,7 @@ class BOPESSampler:
         # Save optimal point to bootstrap
         if self._is_variational_solver:
             if isinstance(self._state_solver, ExcitedStatesSolver):
-                optimal_params = result.raw_result.ground_state_raw_result.optimal_point
+                optimal_params = result.raw_result.optimal_point
             elif isinstance(self._state_solver, GroundStateSolver):
                 optimal_params = result.raw_result.optimal_point
             self._points_optparams[point] = optimal_params
