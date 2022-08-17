@@ -15,7 +15,7 @@
 from typing import Union, Optional, Tuple, Dict
 
 from qiskit.algorithms import Eigensolver
-from qiskit.opflow import PauliSumOp
+from qiskit.opflow import PauliSumOp, OperatorBase
 
 from qiskit_nature import ListOrDictType, QiskitNatureError
 from qiskit_nature.converters.second_quantization import QubitConverter
@@ -121,6 +121,39 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
             aux_ops = None
         return main_operator, aux_ops
 
+    def _compute_transition_amplitudes(
+        self,
+        aux_operators: Optional[ListOrDict[OperatorBase]],
+    ) -> Optional[ListOrDict[Tuple[complex, complex]]]:
+        """Computes the transition amplitudes for the desired auxiliary operators and eigenstates.
+        """
+
+        transition_amplitude_vals = None
+
+        if not(self._transition_amplitude_pairs is None and self._transition_amplitude_names is None) and aux_operators is not None:
+            if not(self.solver.supports_transition_amplitudes()):
+                raise NotImplementedError("The computation of transition amplitudes is not yet available "
+                                          "with this solver.")
+            restricted_aux_ops = {}
+            for name_aux in self._transition_amplitude_names:
+                if (isinstance(aux_operators, dict) and name_aux not in aux_operators.keys()) or (
+                    isinstance(aux_operators, list) and name_aux > len(aux_operators)
+                ):
+                    raise KeyError(
+                        f"The key '{name_aux}' was not previously defined!"
+                        " Please check that it was given as an argument of the solve() method."
+                    )
+                restricted_aux_ops[name_aux] = aux_operators[name_aux]
+
+            transition_amplitude_vals = {}
+            for pair in self._transition_amplitude_pairs:
+                i, j = pair
+                temp_results = self.solver.eval_transition_amplitude(restricted_aux_ops, i, j)
+                for aux_str, aux_res in temp_results.items():
+                    transition_amplitude_vals[str(aux_str) + "_" + str(i) + "_" + str(j)] = aux_res
+
+        return transition_amplitude_vals
+
     def solve(
         self,
         problem: BaseProblem,
@@ -150,13 +183,17 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
 
         main_operator, aux_ops = self.get_qubit_operators(problem, aux_operators)
         raw_es_result = self.solver.compute_eigenvalues(main_operator, aux_ops)  # type: ignore
-        # transition_amplitudes = self.solver.compute_transition_amplitudes(
-        #     aux_ops, self._transition_amplitude_names, self._transition_amplitude_pairs
-        # )
-        # raw_es_result.transition_amplitudes = transition_amplitudes
+
+        transition_amplitudes = None
+        if not(self._transition_amplitude_pairs is None and self._transition_amplitude_names is None):
+            if not(self.solver.supports_transition_amplitudes()):
+                raise NotImplementedError("The computation of transition amplitudes is not yet available "
+                                          "with this solver.")
+            transition_amplitudes = self._compute_transition_amplitudes(aux_ops)
 
         eigenstate_result = EigenstateResult()
         eigenstate_result.raw_result = raw_es_result
+        eigenstate_result.raw_result.transition_amplitudes = transition_amplitudes
         eigenstate_result.eigenenergies = raw_es_result.eigenvalues
         eigenstate_result.eigenstates = raw_es_result.eigenstates
         eigenstate_result.aux_operator_eigenvalues = raw_es_result.aux_operator_eigenvalues
