@@ -51,6 +51,9 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
 
         self._transition_amplitude_names = transition_amplitude_names
         self._transition_amplitude_pairs = transition_amplitude_pairs
+        self._transition_amplitude_to_eval = not (
+            self._transition_amplitude_pairs is None and self._transition_amplitude_names is None
+        )
 
     @property
     def solver(self) -> Union[Eigensolver, EigensolverFactory]:
@@ -123,17 +126,19 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
 
     def _compute_transition_amplitudes(
         self,
+        results: EigenstateResult,
         aux_operators: Optional[ListOrDict[OperatorBase]],
     ) -> Optional[ListOrDict[Tuple[complex, complex]]]:
-        """Computes the transition amplitudes for the desired auxiliary operators and eigenstates.
-        """
+        """Computes the transition amplitudes for the desired auxiliary operators and eigenstates."""
 
         transition_amplitude_vals = None
 
-        if not(self._transition_amplitude_pairs is None and self._transition_amplitude_names is None) and aux_operators is not None:
-            if not(self.solver.supports_transition_amplitudes()):
-                raise NotImplementedError("The computation of transition amplitudes is not yet available "
-                                          "with this solver.")
+        if self._transition_amplitude_to_eval and aux_operators is not None:
+            if not (self.solver.supports_transition_amplitudes()):
+                raise NotImplementedError(
+                    "The computation of transition amplitudes is not yet available "
+                    "for this solver."
+                )
             restricted_aux_ops = {}
             for name_aux in self._transition_amplitude_names:
                 if (isinstance(aux_operators, dict) and name_aux not in aux_operators.keys()) or (
@@ -148,7 +153,22 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
             transition_amplitude_vals = {}
             for pair in self._transition_amplitude_pairs:
                 i, j = pair
-                temp_results = self.solver.eval_transition_amplitude(restricted_aux_ops, i, j)
+                if i > len(results.eigenstates) or j > len(results.eigenstates):
+                    raise IndexError(
+                        f"The pair of indices '({i},{j})' is not a valid pair. Please check that"
+                        " both value do not exceed the total number of calculated eigenstates."
+                    )
+                if i == j:
+                    raise IndexError(
+                        f"The pair of indices '({i},{j})' is not a valid pair. This method can only"
+                        " be used for distinct indices. To compute the expectation value of an"
+                        " auxiliary operator, please refer to the documentation of the"
+                        " :meth:`_eval_aux_operators` method."
+                    )
+                wavefi, wave_fj = results.eigenstates[i], results.eigenstates[j]
+                temp_results = self.solver.eval_transition_amplitude(
+                    restricted_aux_ops, wavefi, wave_fj
+                )
                 for aux_str, aux_res in temp_results.items():
                     transition_amplitude_vals[str(aux_str) + "_" + str(i) + "_" + str(j)] = aux_res
 
@@ -185,11 +205,8 @@ class ExcitedStatesEigensolver(ExcitedStatesSolver):
         raw_es_result = self.solver.compute_eigenvalues(main_operator, aux_ops)  # type: ignore
 
         transition_amplitudes = None
-        if not(self._transition_amplitude_pairs is None and self._transition_amplitude_names is None):
-            if not(self.solver.supports_transition_amplitudes()):
-                raise NotImplementedError("The computation of transition amplitudes is not yet available "
-                                          "with this solver.")
-            transition_amplitudes = self._compute_transition_amplitudes(aux_ops)
+        if self._transition_amplitude_to_eval:
+            transition_amplitudes = self._compute_transition_amplitudes(raw_es_result, aux_ops)
 
         eigenstate_result = EigenstateResult()
         eigenstate_result.raw_result = raw_es_result
