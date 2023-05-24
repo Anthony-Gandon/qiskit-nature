@@ -26,7 +26,7 @@ class MixedMapper2(QubitMapper):
     """Mapper of Spin Operator to Qubit Operator"""
 
     def _map_single(self, position_ii, mapper_ii, coef_ii, operator_ii):
-        print((position_ii, mapper_ii, coef_ii, operator_ii))
+        print((position_ii, coef_ii, operator_ii))
 
     def map(
         self,
@@ -40,16 +40,13 @@ class MixedMapper2(QubitMapper):
         all_keys = list(mixed_op.data.keys())
         print(all_keys)
 
-        for key, item in mixed_op.data.items():
-            operator_length = len(item)
-            print(operator_length)
-            for ii in range(operator_length):
-                position_ii = ordering[key[ii]]
-                mapper_ii = mappers[str(type(item[ii][0]))]
-                coef_ii = item[ii][0]
-                operator_ii = item[ii][1]
-
-                self._map_single(position_ii, mapper_ii, coef_ii, operator_ii)
+        for key, operator_list in mixed_op.data.items():
+            for operator_tuple in operator_list:
+                coeff = operator_tuple[0]
+                for index, op in enumerate(operator_tuple[1:]):
+                    position_ii = ordering[key[index]]
+                    mapper_ii = mappers[str(type(op))]
+                    self._map_single(position_ii, mapper_ii, coeff, op)
 
 
 
