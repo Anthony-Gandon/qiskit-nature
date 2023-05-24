@@ -23,10 +23,11 @@ from .qubit_mapper import ListOrDictType, QubitMapper
 
 
 class MixedMapper2(QubitMapper):
-    """Mapper of Spin Operator to Qubit Operator"""
+    """Mapper of Mixed Operator to Qubit Operator"""
 
     def _map_single(self, position_ii, mapper_ii, coef_ii, operator_ii):
-        print((position_ii, coef_ii, operator_ii))
+        print((coef_ii, operator_ii))
+        print("\t", (position_ii, type(mapper_ii).__name__, operator_ii.register_length))
 
     def map(
         self,
@@ -42,11 +43,10 @@ class MixedMapper2(QubitMapper):
 
         for key, operator_list in mixed_op.data.items():
             for operator_tuple in operator_list:
-                coeff = operator_tuple[0]
                 for index, op in enumerate(operator_tuple[1:]):
                     position_ii = ordering[key[index]]
-                    mapper_ii = mappers[str(type(op))]
-                    self._map_single(position_ii, mapper_ii, coeff, op)
+                    mapper_ii = mappers[key[index]]
+                    self._map_single(position_ii, mapper_ii, operator_tuple[0], op)
 
 
 
