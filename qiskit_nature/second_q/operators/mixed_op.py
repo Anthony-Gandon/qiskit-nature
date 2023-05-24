@@ -15,7 +15,7 @@ from qiskit.quantum_info.operators.mixins import (
     TolerancesMixin,
 )
 
-from copy import copy
+from copy import deepcopy
 import numpy as np
 
 
@@ -66,44 +66,50 @@ class MixedOp2(LinearMixin):
 
     def __repr__(self) -> str:
         out_str = ""
-        for key, item in self.data.items():
+        for key, oplist in self.data.items():
             for hspace in key:
                 out_str+= hspace
-            out_str += ":\n"
-            for op in item:
-                out_str += f"{repr(op[0])} / coeff: {op[1]}"
-                out_str += "\n"
+            out_str += " : "
+            for op_tuple in oplist:
+                out_str+="["
+                for op in op_tuple:
+                    out_str += f"{repr(op)} "
+                out_str+="]"
             out_str += "\n"
 
         return out_str
+    
+    def copy(self):
+        return deepcopy(self)
 
     def __len__(self):
         return len(self.ops[FermionicOp]) + len(self.ops[SpinOp])
 
-    def mul(self, other: complex) -> MixedOp:
-        if not isinstance(other, (int, float, complex)):
-            raise TypeError(
-                f"Unsupported operand type(s) for *: 'MixedOp' and '{type(other).__name__}'"
-            )
-        op_list = self.ops[FermionicOp] + self.ops[SpinOp]
-        new_coeffs = [(c[0], c[1] * other) for c in self.coeffs]
-        return MixedOp2((op_list, new_coeffs))
-
     def compose(self, other: MixedOp) -> MixedOp:
         new_data = {}
-        for key1, op1 in self.data.items():
-            for key2, op2 in other.data.items():
-                new_data[key1 + key2] = op1 + op2  
+        for key1, op_tuple1 in self.data.items():
+            for key2, op_tuple2 in other.data.items():
+                new_tuple = []
+                for op1 in op_tuple1:
+                    for op2 in op_tuple2:
+                        new_tuple.append(
+                            (op1[0]*op2[0],) + op1[1:] + op2[1:]
+                        )
+                new_data[key1+key2] = new_tuple
         return MixedOp2(new_data)
 
     def _add(self, other: MixedOp, qargs: None = None) -> MixedOp:
-        new_data = {**self.data, **other.data}
+        new_data = deepcopy(self.data)
+        for key in other.data.keys():
+            if key in new_data.keys():
+                new_data[key] += other.data[key]
+            else:
+                new_data[key] = other.data[key]
         return MixedOp2(new_data)
 
     def _multiply(self, other: float):
-        new_data = {}
-        for key, list_op in self.data.items():
-            new_data[key] = []
-            for op in list_op:
-                new_data[key].append((op[0], op[1] * other))
+        new_data = deepcopy(self.data)
+        for key, list_op in new_data.items():
+            for k, op_k in enumerate(list_op):
+                new_data[key][k] = (op_k[0]*other,) + op_k[1:]
         return MixedOp2(new_data)
