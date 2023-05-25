@@ -47,7 +47,8 @@ Modules
 from .electronic_integrals import ElectronicIntegrals
 from .fermionic_op import FermionicOp
 from .bosonic_op import BosonicOp
-from .mixed_op import MixedOp, MixedOp2
+from .mixed_op import MixedOp
+from .mixed_op2 import MixedOp2
 from .spin_op import SpinOp
 from .vibrational_op import VibrationalOp
 from .vibrational_integrals import VibrationalIntegrals
