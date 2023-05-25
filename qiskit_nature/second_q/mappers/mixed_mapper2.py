@@ -35,9 +35,6 @@ class MixedMapper2(QubitMapper):
         self.hilbert_spaces = hilbert_spaces
         self.mappers = mappers
 
-    def from_problem():
-        pass
-
     def _map_tuple_product(self, key, operator_tuple):
         """(5.0, Fop1, Fop2, I, I, Sop3)"""
         coefficient = operator_tuple[0]
@@ -51,7 +48,8 @@ class MixedMapper2(QubitMapper):
             key_char = key[index]
             mapper = self.mappers[key_char]
             dict_mapped_op[key_char] = mapper.map(op)
-            # We can manage here the cases where multiple operators live in the same Hilbert Space.
+            # We can manage here the cases where multiple operators live in the same
+            # Hilbert Space.
             # This could replace a simplify method.
 
         print("dict_mapped_op", dict_mapped_op)
@@ -64,7 +62,7 @@ class MixedMapper2(QubitMapper):
         return product_op
 
     def _map_list_sum(self, key, operator_list):
-        """(5.0, Fop1, Fop2, I, I, Sop3)"""
+        """[operator_tuple1, operator_tuple2, ...]"""
         final_op = 0
         for operator_tuple in operator_list:
             prod = self._map_tuple_product(key, operator_tuple)
@@ -78,6 +76,11 @@ class MixedMapper2(QubitMapper):
         *,
         register_length: int | None = None,
     ) -> SparsePauliOp:
+        """A MixedOp is a dict of list (to represent the sum of operators) of
+        tuple (to represent the sum of operators).
+        We run through the sum and then map the products with the necessary
+        padding.
+        """
         result = []
 
         for key, operator_list in mixed_op.data.items():
