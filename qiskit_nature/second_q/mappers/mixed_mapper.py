@@ -69,7 +69,7 @@ class MixedMapper(QubitMapper):
 
         # tensor all the elements of the dictionary.
         list_op = list(dict_mapped_op.values())
-        product_op = list_op[0]
+        product_op = coefficient * list_op[0]
         for op in list_op[1:]:
             product_op = product_op.tensor(op)
 
