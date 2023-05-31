@@ -90,6 +90,7 @@ after the mapping to qubit operators, you can use the following wrapper for symm
 
    TaperedQubitMapper
 
+<<<<<<< HEAD
 
 MixedOp Mappers
 +++++++++++++++
@@ -101,6 +102,8 @@ MixedOp Mappers
    MixedMapper
 
 
+=======
+>>>>>>> main
 Qubit Converter
 +++++++++++++++
 
@@ -124,7 +127,10 @@ from .qubit_mapper import QubitMapper
 from .qubit_converter import QubitConverter
 from .interleaved_qubit_mapper import InterleavedQubitMapper
 from .tapered_qubit_mapper import TaperedQubitMapper
+<<<<<<< HEAD
 from .mixed_mapper import MixedMapper
+=======
+>>>>>>> main
 
 __all__ = [
     "BravyiKitaevMapper",
@@ -139,5 +145,8 @@ __all__ = [
     "QubitMapper",
     "InterleavedQubitMapper",
     "TaperedQubitMapper",
+<<<<<<< HEAD
     "MixedMapper",
+=======
+>>>>>>> main
 ]

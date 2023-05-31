@@ -39,6 +39,7 @@ Furthermore, the factory methods for ``Lattice`` objects defined on the
 | ``IsingModel.from_parameters``           | ``Lattice.from_adjacency_matrix`` |
 +------------------------------------------+-----------------------------------+
 
+<<<<<<< HEAD
 Table of Contents
 ~~~~~~~~~~~~~~~~~
 
@@ -50,6 +51,8 @@ jump to a specific section:
 -  `IsingModel.uniform_parameters <#IsingModel.uniform_parameters>`__
 -  `IsingModel.from_parameters <#IsingModel.from_parameters>`__
 
+=======
+>>>>>>> main
 Further Resources
 ~~~~~~~~~~~~~~~~~
 

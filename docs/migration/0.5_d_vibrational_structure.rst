@@ -1,6 +1,7 @@
 Vibrational Structure Problems with v0.5
 ========================================
 
+<<<<<<< HEAD
 Table of Contents
 -----------------
 
@@ -15,6 +16,8 @@ table of contents to help you navigate:
    (qiskit_nature.problems) <#The-VibrationalStructureProblem-(qiskit_nature.problems)>`__
 -  `qiskit_nature.properties <#qiskit_nature.properties>`__
 
+=======
+>>>>>>> main
 Further resources
 -----------------
 

@@ -191,7 +191,13 @@ class FreezeCoreTransformer(BaseTransformer):
                 information is inferred from the required arguments.
         """
         sum_electrons = sum(self.Z(atom) for atom in molecule.symbols)
+<<<<<<< HEAD
         sum_electrons += molecule.charge
+=======
+        # NOTE: electrons are negatively charged! Thus, when we have for example a charge of +1,
+        # this indicates 1 fewer electron. In contrast, a charge of -1 is 1 more electron.
+        sum_electrons -= molecule.charge
+>>>>>>> main
         num_alpha = sum_electrons // 2 + molecule.multiplicity - 1
         num_beta = sum_electrons - num_alpha
 

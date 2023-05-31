@@ -1,5 +1,10 @@
 [build-system]
+<<<<<<< HEAD
 requires = ["setuptools", "wheel"]
+=======
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+>>>>>>> main
 
 [tool.black]
 line-length = 100
