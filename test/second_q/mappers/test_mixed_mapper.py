@@ -10,7 +10,7 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
-""" Test Bosonic Linear Mapper """
+""" Test Mixed Mapper """
 
 import unittest
 
@@ -31,8 +31,8 @@ from qiskit_nature import settings
 
 
 @ddt
-class TestBosonicLinearMapper(QiskitNatureTestCase):
-    """Test Bosonic Linear Mapper"""
+class TestMixedMapper(QiskitNatureTestCase):
+    """Test Mixed Mapper"""
 
     # Define some useful coefficients
     sq_2 = np.sqrt(2)
